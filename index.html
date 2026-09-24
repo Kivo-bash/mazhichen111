@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>火种到星辰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC:wght@400;500&family=JetBrains+Mono:wght@500&family=Ma+Shan+Zheng&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --ink:#08090e;
+  --bone:#f1ead8;
+  --dim:#b4ab96;
+  --accent:#ff8a3d;
+  --serif:"Noto Serif SC","Songti SC","SimSun",serif;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--bone);overflow:hidden}
+body{font-family:var(--sans);-webkit-font-smoothing:antialiased}
+#stage{position:fixed;inset:0;background:var(--ink)}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.shade{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 70% at 0% 0%,rgba(4,5,10,.62),rgba(4,5,10,0) 55%),
+             linear-gradient(to top,rgba(4,5,10,.7),rgba(4,5,10,0) 22%)}
+.brand{position:absolute;top:calc(env(safe-area-inset-top,0px) + 22px);right:24px;
+  display:flex;align-items:baseline;gap:12px;font-family:var(--mono);font-size:12px;
+  letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.brand b{font-family:var(--serif);font-weight:900;font-size:15px;letter-spacing:.2em;color:var(--bone)}
+.caption{position:absolute;top:calc(env(safe-area-inset-top,0px) + 56px);left:clamp(16px,4vw,48px);
+  max-width:min(34rem,calc(100% - 32px));text-shadow:0 2px 18px rgba(0,0,0,.55)}
+.caption .era{font-family:var(--mono);font-size:13px;letter-spacing:.16em;color:var(--accent);
+  display:flex;gap:14px;align-items:center}
+.caption .era i{font-style:normal;color:var(--dim)}
+.caption h1{font-family:var(--serif);font-weight:900;font-size:clamp(2.1rem,5.4vw,3.9rem);
+  line-height:1.1;margin:.3em 0 .35em;letter-spacing:.06em;text-wrap:balance}
+.caption p{margin:0;font-size:clamp(.95rem,1.5vw,1.08rem);line-height:1.8;color:rgba(241,234,216,.88);max-width:30em}
+.caption.in .era,.caption.in h1,.caption.in p{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
+.caption.in h1{animation-delay:.08s}
+.caption.in p{animation-delay:.18s}
+@keyframes rise{from{opacity:0;transform:translateY(14px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+
+.intro,.finale{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding-inline:16px;pointer-events:none}
+.intro .k,.finale .k{font-family:var(--mono);font-size:13px;letter-spacing:.3em;color:var(--accent)}
+.intro h2{font-family:var(--serif);font-weight:900;font-size:clamp(3rem,11vw,7.5rem);margin:.15em 0 .1em;letter-spacing:.12em;
+  text-shadow:0 0 60px rgba(255,138,61,.35)}
+.intro p{margin:0;color:var(--dim);font-size:1.05rem;letter-spacing:.2em}
+.finale{background:radial-gradient(60% 50% at 50% 50%,rgba(5,4,15,.55),rgba(5,4,15,0))}
+.finale h2{font-family:var(--serif);font-weight:900;font-size:clamp(2rem,6.4vw,4.6rem);margin:.3em 0 .6em;letter-spacing:.1em;text-wrap:balance}
+.finale button{pointer-events:auto}
+
+.btn{appearance:none;border:1px solid rgba(241,234,216,.35);background:rgba(8,9,14,.45);color:var(--bone);
+  font:500 14px/1 var(--sans);letter-spacing:.2em;padding:12px 22px;border-radius:999px;cursor:pointer;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn:focus-visible,.play:focus-visible,.chap:focus-visible,.track:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:16px;
+  padding:14px clamp(16px,4vw,48px) calc(env(safe-area-inset-bottom,0px) + 18px)}
+.play{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(241,234,216,.4);
+  background:rgba(8,9,14,.5);color:var(--bone);display:grid;place-items:center;cursor:pointer;padding:0}
+.play:hover{border-color:var(--accent)}
+.play svg{width:16px;height:16px;fill:currentColor}
+.track{position:relative;flex:1;height:44px;cursor:pointer;touch-action:none}
+.rail{position:absolute;left:0;right:0;top:14px;height:3px;background:rgba(241,234,216,.18);border-radius:2px}
+.fill{position:absolute;left:0;top:14px;height:3px;background:var(--accent);border-radius:2px;width:0}
+.knob{position:absolute;top:10px;width:11px;height:11px;margin-left:-5.5px;border-radius:50%;background:var(--bone);
+  box-shadow:0 0 0 4px rgba(0,0,0,.25)}
+.chap{position:absolute;top:0;height:44px;transform:translateX(-50%);background:none;border:0;padding:0 4px;
+  color:var(--dim);font:500 11px/1 var(--sans);letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:0}
+.chap::before{content:"";width:1px;height:9px;margin-top:11px;background:rgba(241,234,216,.45)}
+.chap span{margin-top:9px;white-space:nowrap}
+.chap.on{color:var(--bone)}
+.chap.on::before{background:var(--accent)}
+.time{flex:none;font-family:var(--mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.05em}
+@media (max-width:760px){
+  .chap span{display:none}
+  .chap.on span{display:block}
+  .time{display:none}
+  .brand span{display:none}
+}
+@media (max-width:420px){
+  .caption p{font-size:.92rem}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" aria-label="人类科技发展史动画：从钻木取火到智能时代"></canvas>
+  <div class="shade"></div>
+  <div class="brand"><b>火种到星辰</b><span id="chapNo">01 / 10</span></div>
+  <section class="caption in" id="cap" aria-live="polite">
+    <div class="era"><span id="capEra">约 40 万年前</span><i id="capIdx">第 1 章</i></div>
+    <h1 id="capTitle">钻木取火</h1>
+    <p id="capText"></p>
+  </section>
+  <div class="intro" id="intro">
+    <div class="k">人类科技简史 · 90 秒</div>
+    <h2>火种到星辰</h2>
+    <p>从第一簇火光，到智能与星海</p>
+  </div>
+  <div class="finale" id="finale" hidden>
+    <div class="k">未完待续</div>
+    <h2>从一粒火星，到满天星辰</h2>
+    <button class="btn" id="replay" type="button">重新播放</button>
+  </div>
+  <nav class="bar">
+    <button class="play" id="play" type="button" aria-label="暂停"></button>
+    <div class="track" id="track" tabindex="0" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="90" aria-valuenow="0">
+      <div class="rail"></div><div class="fill" id="fill"></div><div class="knob" id="knob"></div>
+    </div>
+    <span class="time" id="time">00:00 / 01:30</span>
+  </nav>
+</div>
+
+<script>
+(()=>{
+"use strict";
+/* ============ 工具函数 ============ */
+const TAU=Math.PI*2;
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eo=t=>1-Math.pow(1-t,3);
+const back=t=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);};
+const seg=(p,a,b)=>clamp((p-a)/(b-a));
+const hash=n=>{const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floor(s);};
+const noise1=x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return lerp(hash(i),hash(i+1),u);};
+const fbm=x=>noise1(x)*.65+noise1(x*2.3+7)*.25+noise1(x*5.1+3)*.1;
+const hex=h=>{const n=parseInt(h.slice(1),16);return[n>>16&255,n>>8&255,n&255];};
+const rgba=(h,a)=>{const[r,g,b]=hex(h);return`rgba(${r},${g},${b},${a})`;};
+const mix=(h1,h2,t)=>{const a=hex(h1),b=hex(h2);return`rgb(${a.map((v,i)=>Math.round(lerp(v,b[i],t))).join(",")})`;};
+
+function vgrad(c,y0,y1,stops){const g=c.createLinearGradient(0,y0,0,y1);for(const[o,col]of stops)g.addColorStop(o,col);return g;}
+function glow(c,x,y,r,col,a){if(r<=0||a<=0)return;const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,rgba(col,a));g.addColorStop(1,rgba(col,0));c.fillStyle=g;c.fillRect(x-r,y-r,2*r,2*r);}
+function stars(c,W,H,n,a,t,seed=1){
+  if(a<=0)return;
+  for(let i=0;i<n;i++){
+    const x=hash(i*3.1+seed)*W,y=hash(i*7.7+seed*2)*H,r=hash(i*11.3+seed)*1.4+.3;
+    const tw=.45+.55*Math.sin(t*(1.5+hash(i)*2)+i);
+    c.fillStyle=`rgba(255,250,235,${a*(.35+.65*tw)})`;
+    c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
+  }
+}
+function ridge(c,W,H,base,amp,freq,seed,col,off=0){
+  c.fillStyle=col;c.beginPath();c.moveTo(0,H);
+  for(let x=0;x<=W+24;x+=12)c.lineTo(x,base-fbm((x+off)*freq+seed)*amp);
+  c.lineTo(W,H);c.closePath();c.fill();
+}
+function pine(c,x,y,h,col){
+  c.fillStyle=col;c.beginPath();
+  for(let k=0;k<3;k++){const yy=y-h*.25-k*h*.22,w=h*(.32-k*.07);c.moveTo(x-w,yy);c.lineTo(x,yy-h*.4);c.lineTo(x+w,yy);}
+  c.fill();c.fillRect(x-h*.03,y-h*.3,h*.06,h*.3);
+}
+function cloud(c,x,y,s,col,a){
+  c.fillStyle=rgba(col,a);c.beginPath();
+  [[0,0,1],[.8,.15,.75],[-.8,.2,.7],[.35,-.35,.7],[-.35,-.25,.6],[1.4,.35,.45],[-1.4,.35,.45]].forEach(([dx,dy,r])=>{c.moveTo(x+dx*s+r*s,y+dy*s);c.arc(x+dx*s,y+dy*s,r*s,0,TAU);});
+  c.fill();
+}
+function wheel(c,x,y,r,ang,col,spokes=8,w=5,hub){
+  c.save();c.translate(x,y);c.rotate(ang);c.strokeStyle=col;c.lineWidth=w;
+  c.beginPath();c.arc(0,0,r,0,TAU);c.stroke();
+  c.lineWidth=Math.max(1.2,w*.5);c.beginPath();
+  for(let i=0;i<spokes;i++){const a=i/spokes*TAU;c.moveTo(0,0);c.lineTo(Math.cos(a)*r,Math.sin(a)*r);}
+  c.stroke();c.fillStyle=hub||col;c.beginPath();c.arc(0,0,r*.2,0,TAU);c.fill();c.restore();
+}
+function gear(c,x,y,r,teeth,ang,col,w){
+  c.save();c.translate(x,y);c.rotate(ang);c.strokeStyle=col;c.lineWidth=w;c.beginPath();
+  for(let i=0;i<teeth*2;i++){
+    const a0=i/(teeth*2)*TAU,a1=(i+1)/(teeth*2)*TAU,rr=i%2?r:r*1.12;
+    c.lineTo(Math.cos(a0)*rr,Math.sin(a0)*rr);c.lineTo(Math.cos(a1)*rr,Math.sin(a1)*rr);
+  }
+  c.closePath();c.stroke();
+  c.beginPath();c.arc(0,0,r*.25,0,TAU);c.stroke();
+  for(let i=0;i<5;i++){const a=i/5*TAU;c.beginPath();c.moveTo(Math.cos(a)*r*.25,Math.sin(a)*r*.25);c.lineTo(Math.cos(a)*r*.85,Math.sin(a)*r*.85);c.stroke();}
+  c.restore();
+}
+function flame(c,x,y,sz,t,a=1){
+  if(sz<=.5)return;
+  c.save();c.globalCompositeOperation="lighter";
+  const layers=[["#ff3d00",1],["#ff8a1a",.74],["#ffd35a",.48],["#fff6dc",.24]];
+  for(const[col,k]of layers){
+    for(let j=-1;j<=1;j++){
+      const h=sz*k*(1+.22*Math.sin(t*9+j*2+k*5)+.35*(noise1(t*4+j*10+k*3)-.5))*(j===0?1:.72);
+      const w=sz*k*.36*(j===0?1:.7),ox=x+j*sz*.2*k,sw=Math.sin(t*6+j*1.7)*sz*.1;
+      c.beginPath();c.moveTo(ox-w,y);
+      c.bezierCurveTo(ox-w*1.2,y-h*.45,ox+sw-w*.2,y-h*.7,ox+sw,y-h);
+      c.bezierCurveTo(ox+sw+w*.2,y-h*.7,ox+w*1.2,y-h*.45,ox+w,y);
+      c.closePath();c.fillStyle=rgba(col,.5*a);c.fill();
+    }
+  }
+  c.restore();
+}
+function flameDown(c,x,y,w,len,t){
+  c.save();c.globalCompositeOperation="lighter";
+  const layers=[["#ff5a1a",1],["#ffb347",.7],["#fff1c9",.4]];
+  for(const[col,k]of layers){
+    const L=len*k*(1+.15*Math.sin(t*40+k*9)+.2*(noise1(t*12+k*4)-.5)),ww=w*(.6+k*.4);
+    c.beginPath();c.moveTo(x-ww,y);
+    c.bezierCurveTo(x-ww*1.1,y+L*.4,x-ww*.3,y+L*.8,x,y+L);
+    c.bezierCurveTo(x+ww*.3,y+L*.8,x+ww*1.1,y+L*.4,x+ww,y);
+    c.closePath();c.fillStyle=rgba(col,.75);c.fill();
+  }
+  c.restore();
+}
+
+/* ============ 人物（剪影骨架 + 反向动力学） ============ */
+function ik(ox,oy,tx,ty,l,mode){
+  let dx=tx-ox,dy=ty-oy,d=Math.hypot(dx,dy);const m=l*2*.999;
+  if(d>m){tx=ox+dx/d*m;ty=oy+dy/d*m;d=m;}
+  d=Math.max(d,1e-3);
+  const a=Math.atan2(ty-oy,tx-ox),h=Math.acos(clamp(d/(2*l),-1,1));
+  const e1=[ox+Math.cos(a+h)*l,oy+Math.sin(a+h)*l],e2=[ox+Math.cos(a-h)*l,oy+Math.sin(a-h)*l];
+  const e=mode==="fwd"?(e1[0]>e2[0]?e1:e2):(e1[1]>e2[1]?e1:e2);
+  return[e,[tx,ty]];
+}
+function limb(ox,oy,spec,l,mode){
+  if(spec.t)return[[ox,oy],...ik(ox,oy,spec.t[0],spec.t[1],l,mode)];
+  const[a1,a2]=spec,k=[ox+Math.sin(a1)*l,oy+Math.cos(a1)*l];
+  return[[ox,oy],k,[k[0]+Math.sin(a1+a2)*l,k[1]+Math.cos(a1+a2)*l]];
+}
+function figure(c,x,y,s,P,col,dir=1,alpha=1){
+  if(alpha<=0)return;
+  c.save();c.translate(x,y);c.scale(dir,1);c.globalAlpha*=alpha;
+  c.strokeStyle=c.fillStyle=col;c.lineCap=c.lineJoin="round";
+  const T=s*.34,U=s*.19,L=s*.25,lw=s*.07,lean=P.lean||0;
+  const sx=Math.sin(lean)*T,sy=-Math.cos(lean)*T;
+  const draw=(pts,w)=>{c.lineWidth=w;c.beginPath();c.moveTo(...pts[0]);c.lineTo(...pts[1]);c.lineTo(...pts[2]);c.stroke();};
+  draw(limb(0,0,P.ll||[.1,0],L,"fwd"),lw*1.15);
+  draw(limb(sx,sy,P.la||[.2,.3],U,"down"),lw*.85);
+  c.lineWidth=lw*1.8;c.beginPath();c.moveTo(0,0);c.lineTo(sx,sy);c.stroke();
+  const hl=lean+(P.head||0),hx=sx+Math.sin(hl)*s*.12,hy=sy-Math.cos(hl)*s*.12;
+  c.beginPath();c.arc(hx,hy,s*.078,0,TAU);c.fill();
+  draw(limb(0,0,P.rl||[-.1,0],L,"fwd"),lw*1.15);
+  draw(limb(sx,sy,P.ra||[-.2,.3],U,"down"),lw*.85);
+  if(P.extra)P.extra(c,{sx,sy,hx,hy,s});
+  c.restore();
+}
+function walk(ph,amp=1){
+  return{
+    ll:[.42*amp*Math.sin(ph),-.7*amp*Math.max(0,Math.sin(ph+1.9))],
+    rl:[-.42*amp*Math.sin(ph),-.7*amp*Math.max(0,Math.sin(ph+1.9+Math.PI))],
+    la:[-.35*amp*Math.sin(ph),.35],ra:[.35*amp*Math.sin(ph),.35]
+  };
+}
+
+/* ============ 第 1 章：钻木取火 ============ */
+function sFire(c,t,p,W,H){
+  const cx=W/2,gy=H*.74,fx=cx+40;
+  const f=ease(seg(p,.42,.66)),q=ease(seg(p,.55,.72));
+  c.fillStyle=vgrad(c,0,gy,[[0,"#04050c"],[.65,"#12122c"],[1,"#2a1c30"]]);c.fillRect(0,0,W,H);
+  stars(c,W,gy*.9,180,.9,t,3);
+  const mx=W*.82,my=H*.16;glow(c,mx,my,140,"#b9b6ff",.14);
+  c.fillStyle="#ece6cf";c.beginPath();c.arc(mx,my,24,0,TAU);c.fill();
+  c.fillStyle="rgba(4,5,12,.9)";c.beginPath();c.arc(mx+11,my-5,21,0,TAU);c.fill();
+  ridge(c,W,H,gy-70,130,.004,11,"#0f1022");
+  for(let i=0;i<9;i++){const x=hash(i*5)*W;if(Math.abs(x-fx)<220)continue;pine(c,x,gy-20+hash(i)*20,90+hash(i*2)*90,"#0b0b17");}
+  ridge(c,W,H,gy-8,40,.01,23,"#0b0a13");
+  c.fillStyle="#0a0810";c.fillRect(0,gy,W,H-gy);
+  if(f>0){
+    c.save();c.globalCompositeOperation="lighter";
+    glow(c,fx,gy-40,620*f,"#ff6a1a",.28*f);
+    c.translate(fx,gy);c.scale(1,.22);glow(c,0,0,520,"#ff8a2a",.55*f);
+    c.restore();
+  }
+  // 烟
+  const sm=seg(p,.1,.35)*(1-seg(p,.66,.9)*.7);
+  for(let i=0;i<22;i++){
+    const ph=(t*.32+hash(i*2))%1,x=fx+Math.sin(ph*6+i)*18*ph+ph*30,y=gy-8-ph*190,r=6+ph*30;
+    c.fillStyle=`rgba(190,175,165,${.16*(1-ph)*sm})`;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
+  }
+  // 柴堆
+  if(q>0){
+    c.save();c.globalAlpha=q;c.strokeStyle="#3a2414";c.lineCap="round";c.lineWidth=11;
+    c.beginPath();c.moveTo(fx-46,gy-2);c.lineTo(fx+40,gy-18);c.moveTo(fx-40,gy-18);c.lineTo(fx+46,gy-2);c.stroke();
+    c.restore();
+  }
+  // 钻木工具
+  const tool=1-q;
+  const bx=fx-58+20*Math.sin(t*10),by=gy-40;
+  if(tool>0){
+    c.save();c.globalAlpha=tool;
+    c.fillStyle="#3a2616";c.fillRect(fx-42,gy-8,84,8);
+    c.fillStyle="#7a5230";c.fillRect(fx-3,gy-74,6,66);
+    c.fillStyle="#3a2414";const sh=(t*140)%10;
+    for(let k=0;k<7;k++){const yy=gy-74+((k*10+sh*Math.sign(Math.cos(t*10)))%66+66)%66;c.fillRect(fx-3,yy,6,2);}
+    c.fillStyle="#2a1a10";c.fillRect(fx-10,gy-80,20,6);
+    c.strokeStyle="#5a3a20";c.lineWidth=4;c.beginPath();c.moveTo(bx,by);c.quadraticCurveTo(bx+60,by-30,bx+120,by);c.stroke();
+    c.strokeStyle="rgba(220,200,170,.6)";c.lineWidth=1;c.beginPath();c.moveTo(bx,by);c.lineTo(fx-3,by+3);c.lineTo(fx+3,by-3);c.lineTo(bx+120,by);c.stroke();
+    c.restore();
+  }
+  // 火星
+  const sp=seg(p,.3,.5)*(1-seg(p,.55,.62));
+  if(sp>0){c.save();c.globalCompositeOperation="lighter";
+    for(let i=0;i<14;i++){const ph=(t*1.6+hash(i*9))%1,a=hash(i*13)*Math.PI+Math.PI;
+      const x=fx+Math.cos(a)*ph*50,y=gy-6+Math.sin(a)*ph*40+ph*ph*30;
+      c.fillStyle=`rgba(255,${160+hash(i)*80|0},60,${(1-ph)*sp})`;c.beginPath();c.arc(x,y,1.8,0,TAU);c.fill();}
+    glow(c,fx,gy-6,30,"#ff9a3a",.6*sp*(.5+.5*Math.sin(t*30)));c.restore();}
+  // 取火者
+  const hip=[fx-70,gy-32],s=140,T=s*.34;
+  const lean=lerp(.45,-.08,q),shx=Math.sin(lean)*T,shy=-Math.cos(lean)*T;
+  const lh=[lerp(70,shx+18,q),lerp(-46,shy-54,q)];
+  const rh=[lerp(bx-hip[0],shx+36,q),lerp(by-hip[1],shy-46,q)];
+  figure(c,hip[0],hip[1],s,{lean,la:{t:lh},ra:{t:rh},ll:[.35,-1.9],rl:[.5,-2.0],head:lerp(.2,-.35,q)},"#070509");
+  // 孩子
+  figure(c,fx+100,gy-10,96,{lean:-.05,ll:[1.55,-1.9],rl:[1.45,-1.8],la:[1.0,.4],ra:[1.2,.3],head:.15},"#070509",-1,q);
+  figure(c,fx+170,gy-40,130,{lean:.05,ll:[.1,0],rl:[-.1,0],la:[.25,.6],ra:[.4,.9]},"#070509",-1,seg(p,.68,.82));
+  flame(c,fx,gy-8,110*f,t);
+  // 余烬
+  if(f>0){c.save();c.globalCompositeOperation="lighter";
+    for(let i=0;i<36;i++){const ph=(t*.45+hash(i))%1,x=fx+(hash(i+5)-.5)*50+Math.sin(t*2+i)*16*ph,y=gy-20-ph*300*f;
+      c.fillStyle=`rgba(255,${150+hash(i*3)*90|0},70,${(1-ph)*f*.9})`;c.beginPath();c.arc(x,y,1.2+hash(i*7)*1.3,0,TAU);c.fill();}
+    c.restore();}
+}
+
+/* ============ 第 2 章：农耕与车轮 ============ */
+function drawOx(c,x,y,t,col){
+  c.save();c.translate(x,y);c.fillStyle=c.strokeStyle=col;c.lineCap="round";
+  const ph=t*4.2;c.lineWidth=9;
+  [[-40,0],[-26,Math.PI],[30,Math.PI],[44,0]].forEach(([lx,o])=>{const a=Math.sin(ph+o)*.33;c.beginPath();c.moveTo(lx,-52);c.lineTo(lx+Math.sin(a)*50,-52+Math.cos(a)*50);c.stroke();});
+  c.beginPath();c.ellipse(0,-64,60,27,0,0,TAU);c.fill();
+  c.beginPath();c.ellipse(30,-84,22,12,0,0,TAU);c.fill();
+  const nod=Math.sin(ph*2)*2;
+  c.beginPath();c.moveTo(45,-84);c.quadraticCurveTo(76,-82+nod,84,-62+nod);c.lineTo(88,-44+nod);c.lineTo(72,-42+nod);c.quadraticCurveTo(58,-56,45,-50);c.fill();
+  c.lineWidth=4;c.beginPath();c.moveTo(74,-78+nod);c.quadraticCurveTo(66,-102+nod,82,-106+nod);c.stroke();
+  c.lineWidth=3;c.beginPath();c.moveTo(-58,-72);c.quadraticCurveTo(-72,-52+Math.sin(t*3)*5,-66,-30);c.stroke();
+  c.restore();
+}
+function sFarm(c,t,p,W,H){
+  const gy=H*.64,road=gy+64;
+  const sunY=lerp(gy+30,gy-190,eo(p));
+  c.fillStyle=vgrad(c,0,gy,[[0,"#2c3566"],[.45,"#a45c78"],[.8,"#ee9f58"],[1,"#ffd48e"]]);c.fillRect(0,0,W,gy+2);
+  glow(c,W*.68,sunY,420,"#ffcf7a",.45);
+  c.fillStyle="#fff1c6";c.beginPath();c.arc(W*.68,sunY,46,0,TAU);c.fill();
+  ridge(c,W,H,gy-40,110,.003,4,"#7b5a7c");
+  ridge(c,W,H,gy-6,50,.006,9,"#5d4462");
+  // 村落
+  for(let i=0;i<6;i++){
+    const hx=W*.72+i*58+hash(i)*20,hw=40+hash(i*3)*24,hh=28+hash(i*4)*20;
+    c.fillStyle="#6d4630";c.fillRect(hx,gy-hh,hw,hh+4);
+    c.fillStyle="#2a1810";c.fillRect(hx+hw*.4,gy-hh*.55,hw*.2,hh*.55);
+    c.fillStyle="#86573a";c.fillRect(hx-3,gy-hh-4,hw+6,5);
+  }
+  for(let i=0;i<14;i++){const ph=(t*.25+hash(i))%1;c.fillStyle=`rgba(230,220,210,${.25*(1-ph)})`;c.beginPath();c.arc(W*.8+Math.sin(ph*5)*8+ph*40,gy-50-ph*150,4+ph*14,0,TAU);c.fill();}
+  c.fillStyle=vgrad(c,gy,H,[[0,"#8a6a2c"],[1,"#3c2a12"]]);c.fillRect(0,gy,W,H-gy);
+  // 田垄
+  c.strokeStyle="rgba(60,40,15,.35)";c.lineWidth=2;
+  for(let k=1;k<8;k++){const y=gy+k*k*3.2;c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+  c.fillStyle="#6e4f24";c.fillRect(0,road-6,W,18);
+  // 鸟
+  c.strokeStyle="#2a1f30";c.lineWidth=2;
+  for(let i=0;i<7;i++){const bx=((t*40+hash(i)*W)%(W+200))-100,byy=H*.18+hash(i*3)*120+Math.sin(t+i)*8,fl=Math.sin(t*8+i)*6;
+    c.beginPath();c.moveTo(bx-10,byy-fl);c.quadraticCurveTo(bx-4,byy-3,bx,byy);c.quadraticCurveTo(bx+4,byy-3,bx+10,byy-fl);c.stroke();}
+  // 牛车
+  const x=lerp(W*.08,W*.9,p),col="#2a1c16";
+  const cartX=x-175;
+  c.strokeStyle=col;c.lineWidth=5;c.beginPath();c.moveTo(x+50,road-80);c.lineTo(cartX+60,road-52);c.stroke();
+  c.fillStyle="#d9a441";
+  for(let k=0;k<5;k++){c.save();c.translate(cartX-50+k*24,road-78-(k%2)*8);c.rotate(-.3+k*.15);c.beginPath();c.ellipse(0,0,12,26,0,0,TAU);c.fill();c.restore();}
+  c.fillStyle="#4a3020";c.fillRect(cartX-72,road-62,140,14);
+  wheel(c,cartX,road-36,36,x/36,"#1f140e",8,6,"#5a3a24");
+  drawOx(c,x,road,t,col);
+  const fh=[x+140,road-58];
+  figure(c,fh[0],fh[1],120,{...walk(t*4.2,.9),ra:{t:[-38,-6]},lean:.08},"#1e1512");
+  c.strokeStyle="rgba(40,28,20,.8)";c.lineWidth=1.5;c.beginPath();c.moveTo(fh[0]-36,fh[1]-6);c.quadraticCurveTo(x+110,road-40,x+84,road-58);c.stroke();
+  // 前景麦穗
+  const n=Math.ceil(W/6);
+  c.strokeStyle="#9a7430";c.lineWidth=1.6;c.beginPath();
+  const tips=[];
+  for(let i=0;i<n;i++){const bx=i*6+hash(i)*4,h=60+hash(i*3)*55,sw=Math.sin(t*1.6+bx*.012)*10+Math.sin(t*3.1+i)*2;
+    c.moveTo(bx,H+4);c.quadraticCurveTo(bx,H-h*.5,bx+sw,H-h);tips.push([bx+sw,H-h,sw]);}
+  c.stroke();
+  c.fillStyle="#e2b04a";c.beginPath();
+  for(const[tx,ty,sw]of tips){c.moveTo(tx,ty);c.ellipse(tx+sw*.1,ty-8,3.4,10,sw*.02,0,TAU);}
+  c.fill();
+}
+
+/* ============ 第 3 章：文字、纸与印刷 ============ */
+function sPaper(c,t,p,W,H){
+  const cx=W/2;
+  c.fillStyle=vgrad(c,0,H,[[0,"#140c07"],[.6,"#2a190e"],[1,"#1a0f08"]]);c.fillRect(0,0,W,H);
+  const table=H*.66;
+  c.fillStyle="#3a2314";c.fillRect(0,table,W,H-table);
+  c.strokeStyle="rgba(0,0,0,.25)";c.lineWidth=1;
+  for(let k=0;k<12;k++){c.beginPath();const y=table+k*18+hash(k)*8;c.moveTo(0,y);for(let x=0;x<=W;x+=40)c.lineTo(x,y+Math.sin(x*.01+k)*3);c.stroke();}
+  // 烛光
+  const kx=W*.1,ky=table+10;
+  glow(c,kx,ky-90,420,"#ffb45a",.22+.03*Math.sin(t*9));
+  c.fillStyle="#e8dcc0";c.fillRect(kx-11,ky-80,22,80);
+  c.strokeStyle="#222";c.lineWidth=1.5;c.beginPath();c.moveTo(kx,ky-80);c.lineTo(kx,ky-88);c.stroke();
+  flame(c,kx,ky-84,30,t);
+  // 卷轴
+  const sw=Math.min(W*.62,720)*ease(seg(p,0,.28)),top=H*.16,sh=H*.4;
+  if(sw>2){
+    c.fillStyle="#efe3c4";c.fillRect(cx-sw/2,top,sw,sh);
+    c.fillStyle="rgba(120,90,50,.08)";for(let k=0;k<30;k++)c.fillRect(cx-sw/2+hash(k)*sw,top+hash(k*3)*sh,hash(k*7)*60,1);
+    const roll=(x)=>{c.fillStyle="#6b3d1e";c.fillRect(x-9,top-12,18,sh+24);c.fillStyle="rgba(255,220,170,.25)";c.fillRect(x-4,top-12,3,sh+24);c.fillStyle="#2a160a";c.fillRect(x-6,top-20,12,8);c.fillRect(x-6,top+sh+12,12,8);};
+    roll(cx-sw/2);roll(cx+sw/2);
+  }
+  // 书法（从右至左竖排）
+  const cols=["格物致知","薪火相传","观天察地","开物成务","继往开来"];
+  const fs=Math.min(sh/5.2,54),N=20;
+  c.textAlign="center";c.textBaseline="middle";c.font=`${fs}px "Ma Shan Zheng","KaiTi","STKaiti",serif`;
+  let cur=null;
+  for(let j=0;j<5;j++)for(let k=0;k<4;k++){
+    const idx=j*4+k,pk=.14+.4*idx/N,a=seg(p,pk,pk+.03);
+    const x=cx+(2-j)*fs*1.45,y=top+sh*.14+k*fs*1.2+fs*.5;
+    if(a>0){c.fillStyle=`rgba(24,16,10,${a})`;c.fillText(cols[j][k],x,y);}
+    if(p>=pk&&p<pk+.02)cur=[x,y];
+  }
+  if(cur&&p<.55){const[x,y]=cur,wg=Math.sin(t*20)*4;
+    c.save();c.translate(x+14+wg,y-6);c.rotate(-.5);c.fillStyle="#6b4a2a";c.fillRect(-3,-110,6,100);c.fillStyle="#111";c.beginPath();c.moveTo(-5,-12);c.lineTo(5,-12);c.lineTo(0,8);c.fill();c.restore();}
+  // 印章
+  const sa=seg(p,.57,.62);
+  if(sa>0){const sx=cx-2*fs*1.45-fs*1.45,sy=top+sh-fs*1.2,sc=1.5-.5*eo(sa);
+    c.save();c.translate(sx,sy);c.scale(sc,sc);c.globalAlpha=sa;c.fillStyle="#b3261e";c.fillRect(-22,-22,44,44);
+    c.fillStyle="#f6e7c8";c.font=`900 26px "Noto Serif SC",serif`;c.fillText("印",0,1);c.restore();}
+  // 活字
+  const chars="活字印刷术让知识与思想飞入寻常百姓家万里",bs=Math.min(38,W*.03),gap=6,cols2=10;
+  const tw=cols2*(bs+gap)+18,tx=cx-tw/2,ty=table+26;
+  c.fillStyle="#2b170b";c.fillRect(tx,ty,tw,2*(bs+gap)+18);c.fillStyle="#140a04";c.fillRect(tx+6,ty+6,tw-12,2*(bs+gap)+6);
+  c.font=`700 ${bs*.62}px "Noto Serif SC",serif`;
+  for(let i=0;i<20;i++){
+    const pi=.58+i*.014,d=seg(p,pi,pi+.07);if(d<=0)continue;
+    const gx=tx+9+(i%cols2)*(bs+gap),gy2=ty+9+Math.floor(i/cols2)*(bs+gap),y=lerp(gy2-240,gy2,back(d));
+    c.globalAlpha=Math.min(1,d*3);c.fillStyle="#c9a36a";c.fillRect(gx,y,bs,bs);
+    c.fillStyle="#e3c48e";c.fillRect(gx,y,bs,3);c.fillStyle="#3a2210";c.fillText(chars[i],gx+bs/2,y+bs/2+1);c.globalAlpha=1;
+  }
+  // 司南
+  const nx=W*.86,ny=table+70;
+  c.save();c.translate(nx,ny);c.scale(1,.42);
+  c.fillStyle="#6f5a2e";c.fillRect(-80,-80,160,160);c.strokeStyle="#a88a4a";c.lineWidth=4;c.strokeRect(-70,-70,140,140);
+  c.beginPath();c.arc(0,0,44,0,TAU);c.fillStyle="#8a7038";c.fill();
+  const ang=Math.PI/2+2.4*Math.exp(-p*4.5)*Math.cos(t*2.4);
+  c.rotate(ang);c.fillStyle="#2c2a24";c.beginPath();c.ellipse(-8,0,22,15,0,0,TAU);c.fill();
+  c.lineWidth=6;c.strokeStyle="#2c2a24";c.lineCap="round";c.beginPath();c.moveTo(10,0);c.lineTo(56,0);c.stroke();
+  c.restore();
+  c.fillStyle="rgba(241,234,216,.55)";c.font=`500 13px "Noto Sans SC",sans-serif`;c.fillText("司南",nx,ny+56);
+}
+
+/* ============ 第 4 章：远洋航行 ============ */
+const wave=(x,t,k)=>Math.sin(x*.012+t*1.2+k)*8+Math.sin(x*.031-t*1.7+k*2)*4+Math.sin(x*.005+t*.5+k)*6;
+function waveBand(c,W,H,base,t,k,col){
+  c.fillStyle=col;c.beginPath();c.moveTo(0,H);
+  for(let x=0;x<=W+10;x+=10)c.lineTo(x,base+wave(x,t,k));
+  c.lineTo(W,H);c.closePath();c.fill();
+}
+function sSea(c,t,p,W,H){
+  const hz=H*.52;
+  c.fillStyle=vgrad(c,0,hz,[[0,"#3f76a8"],[.6,"#93bfd6"],[1,"#f1dbb2"]]);c.fillRect(0,0,W,hz+2);
+  const sx=W*.8,sy=H*.3;glow(c,sx,sy,300,"#fff0c8",.5);c.fillStyle="#fff8e2";c.beginPath();c.arc(sx,sy,34,0,TAU);c.fill();
+  for(let i=0;i<6;i++){const x=((hash(i)*W+t*(10+i*3))%(W+300))-150;cloud(c,x,H*.1+hash(i*3)*H*.2,24+hash(i*5)*22,"#ffffff",.75);}
+  c.fillStyle="#5d7f93";c.beginPath();c.moveTo(0,hz);c.quadraticCurveTo(W*.08,hz-40,W*.18,hz-8);c.lineTo(W*.22,hz);c.fill();
+  c.fillStyle=vgrad(c,hz,H,[[0,"#3d7ea0"],[1,"#0d2c44"]]);c.fillRect(0,hz,W,H-hz);
+  c.save();c.globalCompositeOperation="lighter";
+  for(let i=0;i<40;i++){const y=hz+8+hash(i)*H*.3,x=sx+(hash(i*3)-.5)*(60+(y-hz)*.8),a=.5*Math.max(0,Math.sin(t*3+i*7));
+    c.fillStyle=`rgba(255,240,200,${a*.6})`;c.fillRect(x,y,14+hash(i*9)*20,2);}
+  c.restore();
+  waveBand(c,W,H,hz+30,t,0,"#2f6b8f");
+  const b1=H*.66;waveBand(c,W,H,b1,t,1,"#245a7c");
+  // 宝船
+  const x=lerp(W*.26,W*.62,p),y=b1+wave(x,t,1)-6,tilt=Math.atan2(wave(x+60,t,1)-wave(x-60,t,1),120)*.8;
+  const sc=Math.min(1.25,W/900);
+  c.save();c.translate(x,y);c.rotate(tilt);c.scale(sc,sc);
+  const masts=[[-80,160],[5,215],[90,150]];
+  c.strokeStyle="#2a1a10";c.lineWidth=5;
+  masts.forEach(([mx,mh])=>{c.beginPath();c.moveTo(mx,-20);c.lineTo(mx,-mh-12);c.stroke();});
+  masts.forEach(([mx,mh],i)=>{
+    const bul=10+Math.sin(t*1.3+i)*3,top=-mh,bot=-38,l=mx-46-i*2,r=mx+40;
+    c.fillStyle="#a8452c";c.beginPath();c.moveTo(l+10,top);c.lineTo(r,top+6);c.quadraticCurveTo(r+bul,(top+bot)/2,r,bot);c.lineTo(l,bot);c.quadraticCurveTo(l+bul*.5,(top+bot)/2,l+10,top);c.fill();
+    c.strokeStyle="#5c2416";c.lineWidth=2;
+    for(let yy=top+18;yy<bot;yy+=20){const f=(yy-top)/(bot-top),xl=lerp(l+10,l,f)+bul*.5*Math.sin(f*Math.PI),xr=r+bul*Math.sin(f*Math.PI);c.beginPath();c.moveTo(xl,yy);c.lineTo(xr,yy+3);c.stroke();}
+  });
+  c.fillStyle="#c9302c";const fl=-masts[1][1]-12;c.beginPath();c.moveTo(5,fl);
+  for(let k=0;k<=6;k++)c.lineTo(5+k*7,fl+4+Math.sin(t*6+k)*3);
+  for(let k=6;k>=0;k--)c.lineTo(5+k*7,fl+16+Math.sin(t*6+k)*3);c.fill();
+  c.fillStyle="#3d2416";c.beginPath();c.moveTo(-160,-50);c.lineTo(-120,-26);c.lineTo(120,-20);c.quadraticCurveTo(152,-26,168,-48);c.lineTo(140,22);c.quadraticCurveTo(0,40,-128,20);c.closePath();c.fill();
+  c.fillStyle="#8c3b24";c.fillRect(-126,-14,254,7);
+  c.fillStyle="#f0d28a";for(let k=0;k<8;k++){c.beginPath();c.arc(-90+k*26,2,3.5,0,TAU);c.fill();}
+  c.restore();
+  // 尾迹
+  c.strokeStyle="rgba(255,255,255,.35)";c.lineWidth=2;
+  for(let k=0;k<5;k++){const wx=x-170*sc-k*40,wy=b1+wave(wx,t,1)+4;c.beginPath();c.moveTo(wx,wy);c.quadraticCurveTo(wx-20,wy+4+k,wx-40,wy+k*2);c.stroke();}
+  waveBand(c,W,H,H*.72,t,2,"#1c4d6e");
+  waveBand(c,W,H,H*.8,t,3,"#133b58");
+  c.strokeStyle="rgba(230,245,255,.35)";c.lineWidth=2;c.beginPath();
+  for(let x=0;x<=W;x+=10){const y=H*.8+wave(x,t,3)-2;x?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();
+  // 海鸥
+  c.strokeStyle="#f8f4ea";c.lineWidth=2.2;
+  for(let i=0;i<5;i++){const gx=(W*.1+hash(i)*W*.6+t*25)%W,gy=H*.2+hash(i*2)*H*.18+Math.sin(t*1.2+i)*10,fl=Math.sin(t*6+i*2)*7;
+    c.beginPath();c.moveTo(gx-14,gy-fl);c.quadraticCurveTo(gx-6,gy-4,gx,gy);c.quadraticCurveTo(gx+6,gy-4,gx+14,gy-fl);c.stroke();}
+}
+
+/* ============ 第 5 章：蒸汽时代 ============ */
+function sSteam(c,t,p,W,H){
+  const gy=H*.72;
+  c.fillStyle=vgrad(c,0,gy,[[0,"#1c1426"],[.45,"#5e2a2c"],[.82,"#cc623a"],[1,"#f0a052"]]);c.fillRect(0,0,W,gy+2);
+  glow(c,W*.5,gy,W*.6,"#ffae5a",.3);
+  gear(c,W*.12,H*.24,120,16,t*.5,"rgba(255,190,130,.14)",6);
+  gear(c,W*.12+228,H*.24+40,90,12,-t*.5*16/12+.13,"rgba(255,190,130,.12)",5);
+  // 工厂
+  const fac=[[.05,120,2],[.2,90,1],[.34,150,3],[.55,110,2],[.7,140,2],[.86,100,1]];
+  for(const[fxr,fh,ch]of fac){
+    const fx=W*fxr,fw=W*.13;
+    for(let k=0;k<ch;k++){const cxk=fx+fw*(k+1)/(ch+1),chh=fh+90+k*20;
+      c.fillStyle="#1a1214";c.fillRect(cxk-9,gy-chh,18,chh);
+      for(let i=0;i<10;i++){const ph=(t*.18+hash(i+fxr*50+k*9))%1;
+        c.fillStyle=`rgba(80,64,64,${.5*(1-ph)})`;c.beginPath();c.arc(cxk+ph*140+Math.sin(ph*6+i)*10,gy-chh-10-ph*160,10+ph*40,0,TAU);c.fill();}}
+    c.fillStyle="#1a1214";c.beginPath();c.moveTo(fx,gy);c.lineTo(fx,gy-fh);
+    for(let k=0;k<4;k++){c.lineTo(fx+fw*k/4+fw/8,gy-fh-22);c.lineTo(fx+fw*(k+1)/4,gy-fh);}
+    c.lineTo(fx+fw,gy);c.fill();
+    c.fillStyle="rgba(255,190,100,.55)";for(let k=0;k<4;k++)c.fillRect(fx+10+k*fw/4,gy-fh*.6,fw/10,fh*.25);
+  }
+  c.fillStyle="#140e0e";c.fillRect(0,gy,W,H-gy);
+  // 铁轨
+  const ry=gy+70;
+  c.fillStyle="#2b1f1c";for(let x=-(0)%30;x<W;x+=30)c.fillRect(x,ry+2,18,8);
+  c.fillStyle="#6a5a52";c.fillRect(0,ry-2,W,4);
+  // 列车
+  const X=v=>lerp(W*.1,W+900,v);
+  const x=X(p),sc=Math.min(1.15,W/950),rot=x/(30*sc);
+  // 烟团（世界坐标，无状态计算）
+  for(let k=0;k<30;k++){
+    const te=Math.floor(t*4)/4-k*.25,age=t-te;if(te<0)continue;
+    const ex=X(te/9),ey=ry-170*sc,r=(10+age*15)*sc,a=.5*Math.max(0,1-age/4.5);
+    c.fillStyle=`rgba(${200-age*12|0},${190-age*14|0},${185-age*14|0},${a})`;
+    c.beginPath();c.arc(ex-age*22-25*sc,ey-age*42+Math.sin(age*2+k)*8,r,0,TAU);c.fill();
+  }
+  c.save();c.translate(x,ry);c.scale(sc,sc);
+  // 车厢
+  for(let k=0;k<3;k++){const bx=-590-k*230;
+    c.fillStyle="#3d1a14";c.fillRect(bx,-104,210,78);c.fillStyle="#1a0c0a";c.fillRect(bx-6,-112,222,10);
+    c.fillStyle="#ffc46b";for(let w=0;w<5;w++)c.fillRect(bx+14+w*39,-90,24,28);
+    c.fillStyle="#1a0c0a";c.fillRect(bx,-30,210,6);
+    wheel(c,bx+40,-14,14,rot*2,"#140c0a",6,3);wheel(c,bx+170,-14,14,rot*2,"#140c0a",6,3);}
+  // 煤水车
+  c.fillStyle="#15100f";c.fillRect(-340,-100,120,74);c.fillStyle="#0a0808";c.beginPath();c.ellipse(-280,-100,58,10,0,0,Math.PI,true);c.fill();
+  wheel(c,-310,-14,14,rot*2,"#8e2a1e",6,3);wheel(c,-250,-14,14,rot*2,"#8e2a1e",6,3);
+  // 机车
+  c.fillStyle="#15100f";
+  c.fillRect(-210,-160,70,134);c.fillStyle="#ffb45a";c.fillRect(-196,-146,40,34);
+  c.fillStyle="#15100f";c.fillRect(-222,-168,94,10);
+  c.fillRect(-150,-118,170,64);c.beginPath();c.arc(20,-86,32,-Math.PI/2,Math.PI/2);c.fill();
+  c.fillStyle="#b8894a";for(let k=0;k<4;k++)c.fillRect(-120+k*38,-118,4,64);
+  c.fillStyle="#15100f";c.beginPath();c.moveTo(-10,-118);c.lineTo(-18,-168);c.lineTo(22,-168);c.lineTo(14,-118);c.fill();
+  c.fillRect(-24,-176,52,10);c.beginPath();c.arc(-70,-118,16,Math.PI,0);c.fill();
+  c.fillStyle="#b8894a";c.beginPath();c.arc(-70,-118,8,Math.PI,0);c.fill();
+  c.fillStyle="#15100f";c.beginPath();c.moveTo(52,-40);c.lineTo(82,-4);c.lineTo(40,-4);c.fill();c.fillRect(-150,-54,200,16);
+  c.fillStyle="#ffe6a0";c.beginPath();c.arc(48,-104,7,0,TAU);c.fill();glow(c,54,-104,60,"#ffe6a0",.5);
+  const drv=[[-110,32],[-40,32]];
+  drv.forEach(([wx,r])=>wheel(c,wx,-32,r,rot,"#8e2a1e",12,5,"#b8894a"));
+  wheel(c,26,-18,18,rot*1.8,"#8e2a1e",8,4,"#b8894a");
+  const cr=[Math.cos(rot)*16,Math.sin(rot)*16];
+  c.strokeStyle="#c8c0b0";c.lineWidth=6;c.lineCap="round";
+  c.beginPath();c.moveTo(-110+cr[0],-32+cr[1]);c.lineTo(-40+cr[0],-32+cr[1]);c.lineTo(30,-46);c.stroke();
+  c.fillStyle="#2a2220";c.fillRect(20,-60,40,26);
+  // 蒸汽喷口
+  for(let k=0;k<6;k++){const ph=(t*1.8+k/6)%1;c.fillStyle=`rgba(240,240,240,${.35*(1-ph)})`;c.beginPath();c.arc(62+ph*20,-30-ph*18+Math.sin(k)*6,6+ph*20,0,TAU);c.fill();}
+  c.restore();
+}
+
+/* ============ 第 6 章：电气时代 ============ */
+function sElectric(c,t,p,W,H){
+  const cx=W/2,gy=H*.8;
+  c.fillStyle=vgrad(c,0,H,[[0,"#03040b"],[.7,"#0e1430"],[1,"#141a3a"]]);c.fillRect(0,0,W,H);
+  stars(c,W,H*.6,100,.5,t,17);
+  // 闪电（富兰克林的风筝）
+  const lp=seg(p,.02,.11);
+  if(lp>0&&lp<1){
+    const fl=Math.max(0,Math.sin(lp*Math.PI*3))*(1-lp);
+    c.fillStyle=`rgba(200,210,255,${fl*.35})`;c.fillRect(0,0,W,H);
+    c.strokeStyle=`rgba(235,240,255,${fl})`;c.lineWidth=3;c.beginPath();let lx=W*.22,ly=0;c.moveTo(lx,ly);
+    for(let k=0;k<12;k++){lx+=(hash(k*3+1)-.5)*70;ly+=H*.055;c.lineTo(lx,ly);}c.stroke();
+  }
+  // 城市
+  const b=seg(p,.12,.24),flick=p<.24?(hash(Math.floor(t*18))>.35?1:.25):1,bright=b*flick;
+  let bx=-10,i=0;
+  while(bx<W){
+    const bw=50+hash(i*3)*70,dist=Math.abs(bx+bw/2-cx)/(W/2),bh=(90+hash(i*5)*200)*(1.25-dist*.5);
+    c.fillStyle="#0b0e1c";c.fillRect(bx,gy-bh,bw-4,bh);
+    for(let wy=gy-bh+10;wy<gy-12;wy+=16)for(let wx=bx+8;wx<bx+bw-14;wx+=14){
+      const th=.28+dist*.45+hash(wx*.37+wy*.91)*.25;
+      if(p>th){c.fillStyle=hash(wx+wy)>.2?"#ffd27a":"#bfe3ff";c.globalAlpha=Math.min(1,(p-th)*12);c.fillRect(wx,wy,7,9);c.globalAlpha=1;}
+    }
+    bx+=bw;i++;
+  }
+  c.fillStyle="#06080f";c.fillRect(0,gy,W,H-gy);
+  // 电线杆
+  const poles=[];for(let x=40;x<W+200;x+=260)poles.push(x);
+  c.strokeStyle="#1d2440";c.lineWidth=6;
+  for(const x of poles){c.beginPath();c.moveTo(x,gy+20);c.lineTo(x,gy-220);c.moveTo(x-30,gy-205);c.lineTo(x+30,gy-205);c.stroke();}
+  c.save();c.globalCompositeOperation="lighter";
+  for(let w=0;w<2;w++){
+    const oy=gy-205,ox=w?24:-24;
+    c.strokeStyle="rgba(120,140,200,.5)";c.lineWidth=1.5;c.beginPath();
+    for(let k=0;k<poles.length-1;k++){c.moveTo(poles[k]+ox,oy);c.quadraticCurveTo((poles[k]+poles[k+1])/2+ox,oy+40,poles[k+1]+ox,oy);}c.stroke();
+    if(b>0)for(let k=0;k<poles.length-1;k++){
+      const s=(t*.9+k*.37+w*.5)%1,x0=poles[k]+ox,x1=poles[k+1]+ox,mx=(x0+x1)/2;
+      const px=(1-s)*(1-s)*x0+2*(1-s)*s*mx+s*s*x1,py=(1-s)*(1-s)*oy+2*(1-s)*s*(oy+40)+s*s*oy;
+      glow(c,px,py,14,"#9fd8ff",.9*b);
+    }
+  }
+  c.restore();
+  // 灯泡
+  const by=H*.34,r=Math.min(78,H*.1);
+  c.save();c.globalCompositeOperation="lighter";
+  glow(c,cx,by,r*6,"#ffc970",.45*bright);glow(c,cx,by,r*2,"#fff1c0",.6*bright);
+  c.strokeStyle=`rgba(255,220,150,${.08*bright})`;c.lineWidth=2;
+  for(let k=0;k<24;k++){const a=k/24*TAU+t*.1;c.beginPath();c.moveTo(cx+Math.cos(a)*r*1.4,by+Math.sin(a)*r*1.4);c.lineTo(cx+Math.cos(a)*r*(3+hash(k)*1.5),by+Math.sin(a)*r*(3+hash(k)*1.5));c.stroke();}
+  c.restore();
+  c.strokeStyle="rgba(230,235,255,.75)";c.lineWidth=2.5;c.beginPath();
+  c.arc(cx,by,r,Math.PI*.78,Math.PI*.22);c.quadraticCurveTo(cx+r*.4,by+r*1.05,cx+r*.36,by+r*1.35);c.lineTo(cx-r*.36,by+r*1.35);c.quadraticCurveTo(cx-r*.4,by+r*1.05,cx+Math.cos(Math.PI*.78)*r,by+Math.sin(Math.PI*.78)*r);c.stroke();
+  c.fillStyle="#8b8f9c";for(let k=0;k<4;k++)c.fillRect(cx-r*.38,by+r*1.38+k*9,r*.76,6);
+  c.fillStyle="#3a3d48";c.beginPath();c.moveTo(cx-r*.2,by+r*1.74);c.lineTo(cx+r*.2,by+r*1.74);c.lineTo(cx,by+r*1.95);c.fill();
+  c.strokeStyle=bright>.1?`rgba(255,${200+55*bright|0},${120+100*bright|0},1)`:"#5a4a3a";c.lineWidth=2;c.beginPath();
+  c.moveTo(cx-r*.2,by+r*1.3);c.lineTo(cx-r*.3,by);
+  for(let k=0;k<=8;k++)c.lineTo(cx-r*.3+k*r*.075,by+(k%2?-8:0));
+  c.lineTo(cx+r*.2,by+r*1.3);c.stroke();
+}
+
+/* ============ 第 7 章：汽车与飞机 ============ */
+function oldCar(c,x,y,t,rot){
+  c.save();c.translate(x,y);
+  c.fillStyle="#7e2620";c.fillRect(-90,-58,180,30);
+  c.fillStyle="#141414";c.fillRect(-40,-110,80,8);c.fillRect(-36,-104,4,46);c.fillRect(32,-104,4,46);
+  c.fillStyle="#5e1c18";c.fillRect(-94,-40,188,10);
+  c.fillStyle="#141414";c.fillRect(60,-76,30,18);c.fillStyle="#d8c38a";c.fillRect(86,-72,6,10);
+  c.beginPath();c.arc(-6,-78,10,0,TAU);c.fillStyle="#141414";c.fill();c.fillRect(-12,-70,14,14);
+  wheel(c,-58,-22,24,rot,"#141414",12,4,"#c9a54a");wheel(c,60,-22,24,rot,"#141414",12,4,"#c9a54a");
+  c.restore();
+}
+function newCar(c,x,y,t,rot){
+  c.save();c.translate(x,y);
+  c.fillStyle="#e9edf2";c.beginPath();c.moveTo(-110,-26);c.lineTo(-104,-54);c.quadraticCurveTo(-60,-62,-40,-86);c.quadraticCurveTo(10,-96,50,-72);c.quadraticCurveTo(100,-66,112,-44);c.lineTo(110,-26);c.closePath();c.fill();
+  c.fillStyle="#1b2b3c";c.beginPath();c.moveTo(-36,-80);c.quadraticCurveTo(8,-90,44,-70);c.lineTo(-44,-60);c.closePath();c.fill();
+  c.fillStyle="#46e0ff";c.fillRect(96,-52,14,3);glow(c,112,-50,40,"#46e0ff",.5);
+  c.fillStyle="#ff3355";c.fillRect(-110,-50,8,4);
+  c.fillStyle="#9aa4b0";c.fillRect(-110,-30,220,4);
+  [[-66],[70]].forEach(([wx])=>{c.fillStyle="#111";c.beginPath();c.arc(wx,-22,22,0,TAU);c.fill();c.save();c.translate(wx,-22);c.rotate(rot);c.fillStyle="#c9d2dc";for(let k=0;k<5;k++){c.rotate(TAU/5);c.fillRect(-2,2,4,11);}c.restore();});
+  c.restore();
+}
+function sMotion(c,t,p,W,H){
+  const gy=H*.7,v=320,o=t*v;
+  c.fillStyle=vgrad(c,0,gy,[[0,"#3e86d0"],[1,"#c4e3f5"]]);c.fillRect(0,0,W,gy+2);
+  for(let i=0;i<7;i++){const x=W+200-((o*.08+hash(i)*(W+400))%(W+400));cloud(c,x,H*.12+hash(i*2)*H*.25,22+hash(i*4)*26,"#ffffff",.9);}
+  ridge(c,W,H,gy-30,120,.003,31,"#7fa7b8",o*.15);
+  ridge(c,W,H,gy-4,60,.006,37,"#4f8a5a",o*.35);
+  c.fillStyle="#3f7a44";c.fillRect(0,gy,W,H-gy);
+  for(let i=0;i<14;i++){const x=W+100-((o*.7+i*190)%(W+300));c.fillStyle="#2d5e33";c.beginPath();c.arc(x,gy+12,26,0,TAU);c.arc(x+18,gy+2,20,0,TAU);c.fill();c.fillStyle="#4a3524";c.fillRect(x-3,gy+20,6,24);}
+  const ry=gy+70;
+  c.fillStyle="#3a3d44";c.fillRect(0,ry-26,W,70);
+  c.fillStyle="#e8e2c8";for(let x=-(o%80);x<W;x+=80)c.fillRect(x,ry+6,40,4);
+  c.fillStyle="#2f3238";c.fillRect(0,ry+44,W,H-ry-44);
+  // 双翼机
+  const bp=seg(p,0,.62);
+  if(bp>0&&bp<1){const x=lerp(-160,W+160,bp),y=H*.24+Math.sin(t*1.5)*14;
+    c.save();c.translate(x,y);c.rotate(Math.sin(t*1.5+1)*.04);
+    c.fillStyle="#c9a24a";c.fillRect(-46,-30,96,8);c.fillRect(-42,2,92,8);
+    c.strokeStyle="#5a4520";c.lineWidth=2;c.beginPath();c.moveTo(-30,-22);c.lineTo(-30,2);c.moveTo(30,-22);c.lineTo(30,2);c.stroke();
+    c.fillStyle="#8b6a2c";c.beginPath();c.moveTo(-70,-12);c.lineTo(40,-16);c.lineTo(52,-6);c.lineTo(40,4);c.lineTo(-70,-4);c.fill();
+    c.fillRect(-80,-26,14,16);c.fillStyle="rgba(60,50,40,.35)";c.beginPath();c.ellipse(56,-6,4,24,0,0,TAU);c.fill();
+    c.restore();}
+  // 喷气机
+  const jp=seg(p,.45,1);
+  if(jp>0&&jp<1){const x=lerp(W+200,-300,jp),y=H*.1;
+    c.strokeStyle="rgba(255,255,255,.7)";c.lineWidth=4;c.beginPath();c.moveTo(x+30,y);c.lineTo(Math.min(W+400,x+30+jp*1400),y+2);c.stroke();
+    c.fillStyle="#e8eef4";c.beginPath();c.moveTo(x-40,y);c.lineTo(x+40,y-4);c.lineTo(x+40,y+4);c.fill();
+    c.beginPath();c.moveTo(x-5,y);c.lineTo(x+18,y-22);c.lineTo(x+22,y);c.lineTo(x+18,y+20);c.fill();
+    c.beginPath();c.moveTo(x+30,y);c.lineTo(x+42,y-12);c.lineTo(x+42,y);c.fill();}
+  // 汽车：1885 → 今天
+  const k=seg(p,.5,.6),cxr=W*.36,bob=Math.sin(t*18)*1.5,rot=o/24;
+  for(let i=0;i<8;i++){const ph=(t*2+i/8)%1;c.fillStyle=`rgba(120,120,120,${.35*(1-ph)*(1-k)})`;c.beginPath();c.arc(cxr-100-ph*120,ry-20-ph*30,4+ph*14,0,TAU);c.fill();}
+  if(k<1){c.save();c.globalAlpha=1-k;oldCar(c,cxr,ry+bob,t,rot);c.restore();}
+  if(k>0){c.save();c.globalAlpha=k;newCar(c,cxr+k*30,ry+bob*.3,t,rot);c.restore();
+    if(k<1){c.save();c.globalCompositeOperation="lighter";glow(c,cxr,ry-50,220,"#ffffff",.6*Math.sin(k*Math.PI));c.restore();}}
+  if(k>=1){c.strokeStyle="rgba(255,255,255,.35)";c.lineWidth=2;for(let i=0;i<5;i++){const y=ry-80+i*14,x0=cxr-150-hash(i+Math.floor(t*8))*60;c.beginPath();c.moveTo(x0,y);c.lineTo(x0-80,y);c.stroke();}}
+}
+
+/* ============ 第 8 章：信息时代 ============ */
+function sInfo(c,t,p,W,H){
+  c.fillStyle=vgrad(c,0,H,[[0,"#040a14"],[1,"#081a2c"]]);c.fillRect(0,0,W,H);
+  c.strokeStyle="rgba(80,160,220,.07)";c.lineWidth=1;
+  for(let x=0;x<W;x+=40){c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke();}
+  for(let y=0;y<H;y+=40){c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+  c.font=`500 14px "JetBrains Mono",monospace`;c.textAlign="center";
+  for(let i=0;i<34;i++){const x=hash(i)*W,sp=30+hash(i*3)*50;
+    for(let k=0;k<8;k++){const y=((t*sp+hash(i*7)*H)+k*18)%(H+160)-80;c.fillStyle=`rgba(90,200,255,${.035*(k+1)/8*1.6})`;c.fillText(hash(i*13+k+Math.floor(t*2))>.5?"1":"0",x,y);}}
+  // 终端
+  const tw=Math.min(400,W*.4),th=tw*.74,tx=W*.28-tw/2,ty=H*.5-th/2-20;
+  c.fillStyle="#cfc6ae";c.beginPath();c.roundRect(tx-22,ty-22,tw+44,th+60,18);c.fill();
+  c.fillStyle="#b3aa92";c.fillRect(tx+tw/2-50,ty+th+38,100,34);c.fillRect(tx+tw/2-110,ty+th+70,220,12);
+  c.fillStyle="#061a0e";c.beginPath();c.roundRect(tx,ty,tw,th,12);c.fill();
+  c.fillStyle="#8a826c";c.beginPath();c.arc(tx+tw-10,ty+th+20,5,0,TAU);c.fill();
+  const lines=["> ENIAC ONLINE ......... 1946","> TRANSISTOR ........... 1947","> INTEGRATED CIRCUIT ... 1958","> ARPANET: LO .......... 1969","> PERSONAL COMPUTER .... 1981","> WORLD WIDE WEB ....... 1991","> SMARTPHONE ........... 2007"];
+  const fs=Math.max(10,tw/28.5);c.font=`500 ${fs}px "JetBrains Mono",monospace`;c.textAlign="left";c.textBaseline="top";
+  const total=lines.reduce((a,l)=>a+l.length,0);let n=Math.floor(seg(p,.04,.78)*total),cy=ty+18,lastX=tx+16;
+  c.fillStyle="#5dff9e";c.shadowColor="#5dff9e";c.shadowBlur=8;
+  for(const l of lines){if(n<=0)break;const s=l.slice(0,n);c.fillText(s,tx+16,cy);lastX=tx+16+c.measureText(s).width;n-=l.length;if(n>0)cy+=fs*1.6;}
+  if(Math.sin(t*8)>0)c.fillRect(lastX+2,cy,fs*.6,fs);
+  c.shadowBlur=0;
+  c.fillStyle="rgba(0,0,0,.18)";for(let y=ty;y<ty+th;y+=3)c.fillRect(tx,y,tw,1);
+  c.save();c.globalCompositeOperation="lighter";glow(c,tx+tw/2,ty+th/2,tw*.7,"#3dff8a",.08);c.restore();
+  // 地球网络
+  const gx=W*.72,gyy=H*.47,R=Math.min(H*.3,W*.21),rot=t*.35,tilt=.35;
+  const proj=(lat,lon)=>{const x=Math.cos(lat)*Math.sin(lon+rot),y0=Math.sin(lat),z0=Math.cos(lat)*Math.cos(lon+rot);
+    const y=y0*Math.cos(tilt)-z0*Math.sin(tilt),z=y0*Math.sin(tilt)+z0*Math.cos(tilt);return[gx+x*R,gyy-y*R,z];};
+  c.save();c.globalCompositeOperation="lighter";glow(c,gx,gyy,R*1.5,"#1e7bd8",.22);c.restore();
+  c.fillStyle="rgba(8,30,60,.85)";c.beginPath();c.arc(gx,gyy,R,0,TAU);c.fill();
+  c.lineWidth=1;
+  const pathLine=(fn,steps)=>{for(let s=0;s<steps;s++){const a=fn(s/steps),b=fn((s+1)/steps),z=(a[2]+b[2])/2;
+    c.strokeStyle=z>0?`rgba(110,190,255,${.15+.35*z})`:"rgba(110,190,255,.05)";c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke();}};
+  for(let la=-60;la<=60;la+=30)pathLine(u=>proj(la*Math.PI/180,u*TAU),48);
+  for(let lo=0;lo<180;lo+=30)pathLine(u=>proj(u*TAU,lo*Math.PI/180),48);
+  const cities=[];for(let i=0;i<22;i++)cities.push([(hash(i*3)-.5)*2.2,hash(i*5)*TAU]);
+  const nArc=Math.floor(seg(p,.18,.9)*26);
+  c.save();c.globalCompositeOperation="lighter";
+  for(let a=0;a<nArc;a++){
+    const A=cities[a%22],B=cities[(a*7+3)%22];
+    const pt=u=>{const la=lerp(A[0],B[0],u),lo=lerp(A[1],B[1],u),h=1+.28*Math.sin(u*Math.PI),q=proj(la,lo);return[gx+(q[0]-gx)*h,gyy+(q[1]-gyy)*h,q[2]];};
+    for(let s=0;s<24;s++){const u0=s/24,u1=(s+1)/24,q0=pt(u0),q1=pt(u1);if(q0[2]<-.15)continue;
+      c.strokeStyle=`rgba(80,230,255,${.55*clamp(q0[2]+.3)})`;c.lineWidth=1.5;c.beginPath();c.moveTo(q0[0],q0[1]);c.lineTo(q1[0],q1[1]);c.stroke();}
+    const s=(t*.5+hash(a))%1,q=pt(s);if(q[2]>-.1)glow(c,q[0],q[1],10,"#b8f4ff",.9);
+  }
+  for(const[la,lo]of cities){const q=proj(la,lo);if(q[2]>0){c.fillStyle=`rgba(255,220,120,${q[2]})`;c.beginPath();c.arc(q[0],q[1],2.6,0,TAU);c.fill();}}
+  c.restore();
+}
+
+/* ============ 第 9 章：太空时代 ============ */
+function rocket(c,x,y,s){
+  c.save();c.translate(x,y);c.scale(s,s);
+  const W1="#f2f0ea",K="#17171b";
+  c.fillStyle="#3a3a40";c.fillRect(-16,0,12,10);c.fillRect(4,0,12,10);
+  c.fillStyle=W1;c.fillRect(-20,-130,40,130);
+  c.fillStyle=K;c.fillRect(-20,-130,20,24);c.fillRect(0,-106,20,24);c.fillRect(-20,-40,20,20);c.fillRect(0,-20,20,20);c.fillRect(-20,-72,40,6);
+  c.fillStyle="#d8d4ca";c.beginPath();c.moveTo(-20,-34);c.lineTo(-36,4);c.lineTo(-20,4);c.fill();c.beginPath();c.moveTo(20,-34);c.lineTo(36,4);c.lineTo(20,4);c.fill();
+  c.fillStyle=W1;c.beginPath();c.moveTo(-20,-130);c.lineTo(-16,-142);c.lineTo(-16,-200);c.lineTo(16,-200);c.lineTo(16,-142);c.lineTo(20,-130);c.fill();
+  c.fillStyle=K;c.fillRect(-16,-166,32,6);
+  c.fillStyle=W1;c.beginPath();c.moveTo(-16,-200);c.lineTo(-12,-210);c.lineTo(-12,-236);c.lineTo(12,-236);c.lineTo(12,-210);c.lineTo(16,-200);c.fill();
+  c.fillStyle="#c9c5bb";c.beginPath();c.moveTo(-12,-236);c.lineTo(0,-262);c.lineTo(12,-236);c.fill();
+  c.strokeStyle="#c83b2b";c.lineWidth=2;c.beginPath();c.moveTo(0,-262);c.lineTo(0,-290);c.stroke();
+  c.restore();
+}
+function sSpace(c,t,p,W,H){
+  const cx=W/2,gy=H*.8;
+  const alt=ease(seg(p,.28,1)),sh=alt*H*2.4,dark=seg(alt,.04,.5);
+  c.fillStyle=vgrad(c,0,H,[[0,mix("#5f9fd6","#01020a",dark)],[1,mix("#d8e8f2","#050816",seg(alt,.08,.65))]]);c.fillRect(0,0,W,H);
+  stars(c,W,H,220,seg(alt,.3,.75),t,41);
+  // 月亮与卫星
+  const ma=seg(alt,.45,.9);
+  if(ma>0){const mx=W*.8,my=H*.2;c.globalAlpha=ma;glow(c,mx,my,160,"#dfe6ff",.15);
+    c.fillStyle="#d9d8d2";c.beginPath();c.arc(mx,my,48,0,TAU);c.fill();
+    c.fillStyle="#b6b4ac";[[-14,-10,10],[16,8,8],[-4,20,6],[12,-20,5]].forEach(([a,b,r])=>{c.beginPath();c.arc(mx+a,my+b,r,0,TAU);c.fill();});
+    c.globalAlpha=1;
+    const sp=seg(p,.6,.95);if(sp>0&&sp<1){const sx=lerp(-40,W+40,sp),sy=H*.34-Math.sin(sp*Math.PI)*60;
+      c.strokeStyle="#cfd3da";c.lineWidth=1.2;c.beginPath();for(let k=0;k<4;k++){const a=Math.PI*.75+k*.18;c.moveTo(sx,sy);c.lineTo(sx+Math.cos(a)*40,sy+Math.sin(a)*40);}c.stroke();
+      c.fillStyle="#e4e7ec";c.beginPath();c.arc(sx,sy,7,0,TAU);c.fill();
+      if(Math.sin(t*10)>.6){c.strokeStyle="rgba(255,120,120,.6)";c.beginPath();c.arc(sx,sy,14,0,TAU);c.stroke();}}
+  }
+  // 地球弧
+  const ea=seg(alt,.55,1);
+  if(ea>0){const R=W*1.3,top=lerp(H+60,H*.8,ease(ea));
+    c.save();c.globalCompositeOperation="lighter";c.lineWidth=18;c.strokeStyle=`rgba(90,170,255,${.35*ea})`;c.beginPath();c.arc(cx,top+R,R+6,0,TAU);c.stroke();c.restore();
+    const g=c.createLinearGradient(0,top,0,H);g.addColorStop(0,"#3d8fd8");g.addColorStop(.3,"#1b4f8a");g.addColorStop(1,"#0b2244");
+    c.fillStyle=g;c.beginPath();c.arc(cx,top+R,R,0,TAU);c.fill();
+    c.fillStyle="rgba(255,255,255,.4)";for(let i=0;i<10;i++){c.beginPath();c.ellipse(hash(i)*W,top+30+hash(i*3)*60,40+hash(i*5)*60,6,0,0,TAU);c.fill();}}
+  // 地面、发射塔
+  const py=gy+sh;
+  if(py<H+400){
+    ridge(c,W,H,py-10,40,.006,51,"#5d7a86");
+    c.fillStyle="#6b6f68";c.fillRect(0,py,W,H+sh);
+    c.fillStyle="#4a4d49";c.fillRect(cx-90,py-14,180,14);
+    const tx=cx+56,th=330;
+    c.strokeStyle="#b8452e";c.lineWidth=3;
+    c.beginPath();c.moveTo(tx,py-14);c.lineTo(tx,py-th);c.moveTo(tx+26,py-14);c.lineTo(tx+26,py-th);
+    for(let y=py-14;y>py-th;y-=22){c.moveTo(tx,y);c.lineTo(tx+26,y-22);c.moveTo(tx+26,y);c.lineTo(tx,y-22);}c.stroke();
+    const arm=seg(p,.18,.26);c.beginPath();c.moveTo(tx,py-240);c.lineTo(tx-lerp(34,4,arm),py-240);c.stroke();
+  }
+  // 火箭
+  const lift=ease(seg(p,.28,.52)),ry=lerp(py-14,H*.6,lift)+(p>.2&&p<.4?(hash(Math.floor(t*40))-.5)*3:0);
+  const rs=Math.min(1.1,H/680);
+  const ign=seg(p,.2,.26);
+  if(ign>0){
+    c.save();c.globalCompositeOperation="lighter";glow(c,cx,ry+20,260*ign,"#ff8a3a",.35*ign);c.restore();
+    flameDown(c,cx,ry+8*rs,16*rs,(90+120*ign)*rs,t);
+  }
+  rocket(c,cx,ry,rs);
+  // 发射烟云
+  if(p>.2&&py<H+300){
+    for(let i=0;i<46;i++){const side=hash(i)<.5?-1:1,ph=clamp((t-.2*D-hash(i*3)*2.4)/5);if(ph<=0)continue;
+      const x=cx+side*ph*(120+hash(i*7)*420),y=py-18-ph*(20+hash(i)*90),r=18+ph*(60+hash(i*5)*60);
+      c.fillStyle=`rgba(${230-hash(i)*30|0},${222-hash(i)*30|0},${215-hash(i)*30|0},${.8*(1-ph*.5)})`;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();}
+  }
+  // 倒计时
+  if(p<.3){const lbl=p<.06?"T−3":p<.12?"T−2":p<.18?"T−1":"点火";
+    c.fillStyle=`rgba(255,255,255,${.85-seg(p,.26,.3)*.85})`;c.font=`500 ${Math.round(40*rs)}px "JetBrains Mono","Noto Sans SC",monospace`;c.textAlign="left";c.textBaseline="middle";
+    c.fillText(lbl,cx+120*rs,py-330*rs);}
+}
+
+/* ============ 第 10 章：智能时代 ============ */
+function sAI(c,t,p,W,H){
+  const cx=W/2,cy=H*.5;
+  c.fillStyle=vgrad(c,0,H,[[0,"#05040f"],[1,"#0b0820"]]);c.fillRect(0,0,W,H);
+  c.save();c.globalCompositeOperation="lighter";glow(c,W*.22,H*.3,W*.45,"#6b3cff",.18);glow(c,W*.8,H*.72,W*.4,"#16c7c1",.13);c.restore();
+  stars(c,W,H,200,.7,t,77);
+  // 火星
+  const mx=W*.92,my=H*.86,mr=Math.min(160,W*.14);
+  const mg=c.createRadialGradient(mx-mr*.4,my-mr*.4,mr*.1,mx,my,mr);mg.addColorStop(0,"#f08a50");mg.addColorStop(1,"#6a2412");
+  c.fillStyle=mg;c.beginPath();c.arc(mx,my,mr,0,TAU);c.fill();
+  c.fillStyle="rgba(90,30,15,.35)";[[-.4,-.3,.16],[.2,-.5,.1],[-.1,.1,.2]].forEach(([a,b,r])=>{c.beginPath();c.arc(mx+a*mr,my+b*mr,r*mr,0,TAU);c.fill();});
+  // 环形空间站
+  const sx=W*.13,sy=H*.24;
+  c.save();c.translate(sx,sy);c.strokeStyle="rgba(200,215,240,.75)";c.lineWidth=6;c.beginPath();c.ellipse(0,0,70,22,0,0,TAU);c.stroke();
+  c.lineWidth=2;for(let k=0;k<4;k++){const a=k/4*TAU+t*.4;c.beginPath();c.moveTo(0,0);c.lineTo(Math.cos(a)*70,Math.sin(a)*22);c.stroke();}
+  for(let k=0;k<10;k++){const a=k/10*TAU+t*.4;if(Math.sin(a)>0){c.fillStyle="#ffd98a";c.fillRect(Math.cos(a)*70-2,Math.sin(a)*22-2,4,4);}}
+  c.fillStyle="#dfe6f2";c.beginPath();c.arc(0,0,8,0,TAU);c.fill();c.restore();
+  // 神经网络
+  const layers=[4,6,8,6,3],nw=Math.min(W*.56,640),nh=Math.min(H*.46,360),gap=nh/7;
+  const pos=layers.map((n,l)=>Array.from({length:n},(_,k)=>[cx-nw/2+l*nw/4,cy-(n-1)/2*gap+k*gap]));
+  const la=l=>ease(seg(p,.02+l*.07,.14+l*.07));
+  c.save();c.globalCompositeOperation="lighter";
+  // 量子轨道
+  const oa=seg(p,.35,.6);
+  for(let k=0;k<3;k++){const ang=k*1.05+t*.06;c.save();c.translate(cx,cy);c.rotate(ang);
+    c.strokeStyle=`rgba(160,120,255,${.25*oa})`;c.lineWidth=1.5;c.beginPath();c.ellipse(0,0,nw*.62,nw*.17,0,0,TAU);c.stroke();
+    const e=t*1.3+k*2;glow(c,Math.cos(e)*nw*.62,Math.sin(e)*nw*.17,16,"#d2b8ff",oa);c.restore();}
+  let e=0;
+  for(let l=0;l<layers.length-1;l++){const a=Math.min(la(l),la(l+1));if(a<=0)continue;
+    for(const A of pos[l])for(const B of pos[l+1]){e++;
+      c.strokeStyle=`rgba(90,210,255,${.1*a})`;c.lineWidth=1;c.beginPath();c.moveTo(A[0],A[1]);c.lineTo(B[0],B[1]);c.stroke();
+      if(hash(e)<.3){const s=(t*.7+hash(e*3))%1;glow(c,lerp(A[0],B[0],s),lerp(A[1],B[1],s),7,hash(e*5)>.5?"#6ff0ff":"#c49bff",.9*a);}}}
+  pos.forEach((col,l)=>col.forEach(([x,y],k)=>{const a=la(l);if(a<=0)return;const act=.5+.5*Math.sin(t*3-l*1.2+k);
+    glow(c,x,y,26,l%2?"#9b6bff":"#39d5ff",.45*a*act);c.fillStyle=`rgba(230,245,255,${a})`;c.beginPath();c.arc(x,y,5+act*2.5,0,TAU);c.fill();}));
+  c.restore();
+}
+
+/* ============ 章节数据 ============ */
+const D=9,X=1.4;
+const SCENES=[
+  {era:"约 40 万年前",title:"钻木取火",short:"取火",accent:"#ff8a3d",draw:sFire,
+   text:"摩擦生热，第一簇人造的火光驱散了黑夜。熟食、温暖与安全，人类文明从这里开始。"},
+  {era:"约公元前 8000 年",title:"农耕与车轮",short:"农耕",accent:"#f2b45a",draw:sFarm,
+   text:"驯化作物与牲畜，人类定居成村；约公元前 3500 年，车轮让沉重的收获滚动起来。"},
+  {era:"公元 105 年",title:"纸与印刷",short:"印刷",accent:"#e0564a",draw:sPaper,
+   text:"文字留住了知识。蔡伦改进造纸，毕昇发明活字印刷，司南指向南方，思想开始大规模传播。"},
+  {era:"1405 年",title:"远洋航行",short:"航海",accent:"#7cc4e8",draw:sSea,
+   text:"郑和宝船七下西洋，指南针与帆船带领人类驶向未知的海域，世界第一次连成一体。"},
+  {era:"1769 年",title:"蒸汽时代",short:"蒸汽",accent:"#ff9a52",draw:sSteam,
+   text:"瓦特改良蒸汽机，煤与钢铁驱动工厂和火车，工业革命轰然启程。"},
+  {era:"1879 年",title:"电气时代",short:"电气",accent:"#ffd27a",draw:sElectric,
+   text:"从雷电中认识电，爱迪生的电灯点亮城市的夜晚，电网把能量送进千家万户。"},
+  {era:"1903 年",title:"汽车与飞机",short:"交通",accent:"#8fd0ff",draw:sMotion,
+   text:"内燃机让车轮飞驰，莱特兄弟完成首次动力飞行；百年后，电动汽车安静地驶向未来。"},
+  {era:"1946 年",title:"信息时代",short:"信息",accent:"#5dff9e",draw:sInfo,
+   text:"从 ENIAC 到互联网，晶体管与芯片把整个世界编织进同一张网络。"},
+  {era:"1969 年",title:"太空时代",short:"太空",accent:"#b9c8ff",draw:sSpace,
+   text:"火箭挣脱地球引力，阿波罗 11 号登上月球：个人的一小步，人类的一大步。"},
+  {era:"今天与未来",title:"智能时代",short:"智能",accent:"#b28bff",draw:sAI,
+   text:"人工智能、量子计算与星际探索正在展开，下一个篇章由我们共同书写。"},
+];
+const TOTAL=SCENES.length*D;
+
+/* ============ 渲染与交互 ============ */
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+const buf=document.createElement("canvas"),bctx=buf.getContext("2d");
+let dpr=1,sc=1,W=1100,H=760;
+function resize(){
+  const r=cv.getBoundingClientRect(),cw=Math.max(1,r.width),ch=Math.max(1,r.height);
+  dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=buf.width=Math.round(cw*dpr);cv.height=buf.height=Math.round(ch*dpr);
+  const base=cw<ch?820:1100;sc=Math.min(cw/base,ch/760);W=cw/sc;H=ch/sc;
+}
+window.addEventListener("resize",resize);resize();
+
+function drawScene(c,i,t,zoom=1){
+  c.setTransform(dpr*sc,0,0,dpr*sc,0,0);c.globalAlpha=1;c.globalCompositeOperation="source-over";
+  c.save();
+  if(zoom!==1){c.translate(W/2,H/2);c.scale(zoom,zoom);c.translate(-W/2,-H/2);}
+  SCENES[i].draw(c,t,t/D,W,H);
+  c.restore();
+}
+let T=0,playing=true,cur=-1;
+const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+if(reduce){playing=false;T=D*.8;}
+
+const $=id=>document.getElementById(id);
+const cap=$("cap"),intro=$("intro"),finale=$("finale"),fillEl=$("fill"),knob=$("knob"),track=$("track"),playBtn=$("play");
+const ICON_PAUSE='<svg viewBox="0 0 16 16"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>';
+const ICON_PLAY='<svg viewBox="0 0 16 16"><path d="M4 2.5v11a.6.6 0 0 0 .9.5l9-5.5a.6.6 0 0 0 0-1l-9-5.5a.6.6 0 0 0-.9.5z"/></svg>';
+SCENES.forEach((s,i)=>{const b=document.createElement("button");b.type="button";b.className="chap";b.style.left=(i*D/TOTAL*100)+"%";
+  b.innerHTML=`<span>${s.short}</span>`;b.setAttribute("aria-label",`跳到第 ${i+1} 章：${s.title}`);
+  b.addEventListener("click",e=>{e.stopPropagation();seek(i*D+.01);});track.appendChild(b);s.btn=b;});
+const fmt=s=>{s=Math.floor(s);return`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;};
+
+function setScene(i){
+  if(i===cur)return;cur=i;const s=SCENES[i];
+  $("capEra").textContent=s.era;$("capIdx").textContent=`第 ${i+1} 章`;$("capTitle").textContent=s.title;$("capText").textContent=s.text;
+  $("chapNo").textContent=`${String(i+1).padStart(2,"0")} / ${SCENES.length}`;
+  document.documentElement.style.setProperty("--accent",s.accent);
+  SCENES.forEach((x,k)=>x.btn.classList.toggle("on",k===i));
+  cap.classList.remove("in");void cap.offsetWidth;cap.classList.add("in");
+}
+function updateUI(){
+  const f=T/TOTAL*100;fillEl.style.width=f+"%";knob.style.left=f+"%";
+  track.setAttribute("aria-valuenow",Math.round(T));
+  $("time").textContent=`${fmt(T)} / ${fmt(TOTAL)}`;
+  intro.style.opacity=1-seg(T,2.4,3.8);
+  cap.style.opacity=cur===0?seg(T,3,3.9):cur===SCENES.length-1?1-seg(T,TOTAL-2.8,TOTAL-1.8):1;
+  const fin=seg(T,TOTAL-2.4,TOTAL-1.2);finale.hidden=fin<=0;finale.style.opacity=fin;
+  playBtn.innerHTML=playing?ICON_PAUSE:ICON_PLAY;playBtn.setAttribute("aria-label",playing?"暂停":"播放");
+}
+let lastIcon=null;
+function render(){
+  const i=Math.min(SCENES.length-1,Math.floor(T/D)),local=T-i*D;
+  setScene(i);
+  if(local<X&&i>0){
+    const a=ease(local/X);
+    drawScene(ctx,i-1,local+D,1+a*.03);
+    drawScene(bctx,i,local,1.05-a*.05);
+    ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=a;ctx.drawImage(buf,0,0);ctx.globalAlpha=1;
+  }else drawScene(ctx,i,local);
+  updateUI();
+}
+function seek(t){T=clamp(t,0,TOTAL-.001);if(T>=TOTAL-.01)playing=false;render();}
+let prev=performance.now();
+function loop(now){
+  const dt=clamp((now-prev)/1000,0,.1);prev=now;
+  if(playing){T+=dt;if(T>=TOTAL){T=TOTAL-.001;playing=false;}}
+  render();requestAnimationFrame(loop);
+}
+playBtn.addEventListener("click",()=>{if(!playing&&T>=TOTAL-.05)T=0;playing=!playing;});
+$("replay").addEventListener("click",()=>{T=0;playing=true;});
+let drag=false;
+const at=e=>{const r=track.getBoundingClientRect();return clamp((e.clientX-r.left)/r.width)*TOTAL;};
+track.addEventListener("pointerdown",e=>{if(e.target.closest(".chap"))return;drag=true;track.setPointerCapture(e.pointerId);seek(at(e));});
+track.addEventListener("pointermove",e=>{if(drag)seek(at(e));});
+track.addEventListener("pointerup",()=>{drag=false;});
+window.addEventListener("keydown",e=>{
+  if(e.code==="Space"){e.preventDefault();playBtn.click();}
+  else if(e.key==="ArrowRight")seek((Math.floor(T/D)+1)*D+.01);
+  else if(e.key==="ArrowLeft")seek(Math.max(0,(Math.ceil(T/D-.2)-1))*D+.01);
+});
+window.__seek=t=>{playing=false;seek(t);};
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
