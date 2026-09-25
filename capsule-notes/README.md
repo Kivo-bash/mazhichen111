@@ -14,7 +14,7 @@
 
 直接用浏览器打开 `index.html` 即可，不需要安装或构建。
 
-界面组件来自 [Framework7](https://framework7.io) 9.1.3 的 iOS 主题（iOS 26 液态玻璃风格）：浮动侧边面板、导航栏、底部工具栏、气泡、对话框、弹窗、提示、步进器、滑块、搜索栏、左滑删除；图标用 [Framework7 Icons](https://framework7.io/icons/)（和 SF Symbols 同风格）。只打包了用到的组件，放在 `vendor/`（普通脚本，双击打开也能加载）；需要更新时运行 `npm install && npm run build:vendor`。
+界面组件来自 [Framework7](https://framework7.io) 9.1.3 的 iOS 主题（iOS 26 液态玻璃风格）：浮动侧边面板、导航栏、底部工具栏、气泡、对话框、弹窗、提示、步进器、滑块、搜索栏、左滑删除；图标用 [Framework7 Icons](https://framework7.io/icons/)（和 SF Symbols 同风格）。只打包了用到的组件，图标字体以 data URI 内嵌在 `styles.css`；组件放在 `vendor/`（普通脚本，双击打开也能加载）；需要更新时运行 `npm install && npm run build:vendor`。
 
 - **浏览 / 编辑**：右上角切换，快捷键 `Ctrl/⌘ + E`。
 - **撤销 / 重做**：顶栏按钮或 `Ctrl/⌘ + Z`、`Ctrl/⌘ + Shift + Z`，文字、胶囊设置和浏览时填的数都能撤销。

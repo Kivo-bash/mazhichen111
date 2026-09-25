@@ -4,7 +4,7 @@
   "description": "胶囊笔记：带数字胶囊的 Markdown 笔记",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "build:vendor": "esbuild tools/f7-entry.js --bundle --minify --format=iife --legal-comments=eof --outfile=vendor/framework7.js && esbuild tools/f7-entry.css --bundle --minify --outfile=vendor/framework7.css && cp node_modules/framework7-icons/fonts/Framework7Icons-Regular.woff2 vendor/",
+    "build:vendor": "esbuild tools/f7-entry.js --bundle --minify --format=iife --legal-comments=eof --outfile=vendor/framework7.js && esbuild tools/f7-entry.css --bundle --minify --outfile=vendor/framework7.css",
     "serve": "python3 -m http.server 8000"
   },
   "devDependencies": {
