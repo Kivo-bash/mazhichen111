@@ -769,6 +769,18 @@
     renderStatus();
   }
 
+  /* ================= 玻璃反光：记录指针在面板内的位置 ================= */
+  const GLASS = ".side, .top, .bar, .page, .pop, .dlg, .pill, .btn";
+  document.addEventListener("pointermove", (e) => {
+    let el = e.target instanceof Element ? e.target.closest(GLASS) : null;
+    while (el) {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+      el.style.setProperty("--my", `${e.clientY - r.top}px`);
+      el = el.parentElement && el.parentElement.closest(GLASS);
+    }
+  }, { passive: true });
+
   /* ================= 快捷键 & 启动 ================= */
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") { e.preventDefault(); if (!dlg.open) setMode(state.mode === "edit" ? "view" : "edit"); }
