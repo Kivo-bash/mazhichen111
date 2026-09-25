@@ -1,41 +1,73 @@
-/* 胶囊笔记：文档管理、编辑器、浏览视图、胶囊设置对话框与浮层。 */
+/* 胶囊笔记：文档管理、编辑器、浏览视图、胶囊设置对话框、浮层与撤销/重做。
+ * 界面组件（对话框、抽屉、输入框、单选、滑块、提示）来自 Shoelace。 */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const esc = MD.escape;
-  const STORE = "capsule-notes:v1";
+  const STORE = "capsule-notes:v2";
+  const OLD_STORE = "capsule-notes:v1";
   const TOKEN = /\{\{(c_[a-z0-9]+)\}\}/g;
-  const COLORS = [["coral", "珊瑚"], ["amber", "琥珀"], ["lime", "青柠"], ["teal", "青绿"], ["sky", "天蓝"], ["indigo", "靛蓝"], ["violet", "紫罗兰"], ["rose", "玫瑰"]];
+  const COLORS = [["amber", "琥珀"], ["sky", "天蓝"], ["violet", "紫罗兰"], ["teal", "青绿"], ["coral", "珊瑚"], ["lime", "青柠"], ["rose", "玫瑰"], ["indigo", "靛蓝"]];
   const NAME_RE = /^[\p{L}_][\p{L}\p{N}_]*$/u;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const uid = (p) => p + Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, "x");
+  const uid = (p) => p + Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, "x").padEnd(6, "0");
   const tok = (id) => `{{${id}}}`;
 
-  const ICON = {
-    random: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="5.5" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="10.5" cy="10.5" r="1.1" fill="currentColor"/></svg>',
-    input: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3-8 8H2.5v-3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
-    formula: '<span class="fx" aria-hidden="true">ƒ</span>',
-    missing: '<span aria-hidden="true">?</span>',
+  const KIND_ICON = {
+    random: '<svg class="k" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" class="fill"/><circle cx="15.5" cy="15.5" r="1.3" class="fill"/></svg>',
+    input: '<svg class="k" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5l4 4L9 19H5v-4z"/></svg>',
+    formula: "",
   };
 
-  /* ================= 数据 ================= */
-  function sampleDoc() {
-    return {
-      id: "d_sample",
-      title: "周末聚餐计划",
-      updated: Date.now(),
+  /* ================= 示例文档 ================= */
+  const range = (id, name, source, min, max, decimals, def, unit, color) => ({ id, name, kind: "range", source, min, max, decimals, def, formula: "", unit, color });
+  const formula = (id, name, f, decimals, unit, color) => ({ id, name, kind: "formula", source: "random", min: 0, max: 100, decimals, def: null, formula: f, unit, color });
+  function sampleDocs() {
+    const coffee = {
+      id: "d_coffee", title: "浓缩咖啡配方校准", updated: Date.now(),
+      body: [
+        "# 浓缩咖啡配方校准",
+        "",
+        "调整粉量、液重与萃取时间，观察粉液比与萃取率如何随之变化。",
+        "",
+        "## 配方参数",
+        "",
+        "下面每一项都设定了一个合理区间。带铅笔的胶囊可以填入你实际称量的数字；带骰子的胶囊点一下，会在区间内重新抽取一个值。",
+        "",
+        "{{c_dose}} {{c_yield}} {{c_tds}} {{c_time}}",
+        "",
+        "## 由此推导",
+        "",
+        "{{c_ratio}} {{c_flow}} {{c_ey}} {{c_ok}}",
+        "",
+        "> 萃取率落在 18% 到 22% 之间时，酸甜的平衡通常最容易被感知。判断为 1 表示落在这个区间里。",
+        "",
+      ].join("\n"),
+      capsules: {
+        c_dose: range("c_dose", "粉量", "input", 16, 20, 1, 18, "g", "amber"),
+        c_yield: range("c_yield", "液重", "input", 30, 45, 1, 36, "g", "sky"),
+        c_tds: range("c_tds", "浓度", "random", 8, 12, 1, null, "%", "violet"),
+        c_time: range("c_time", "萃取时间", "random", 22, 34, 0, null, "s", "teal"),
+        c_ratio: formula("c_ratio", "粉液比", "液重 / 粉量", 1, ":1", "coral"),
+        c_flow: formula("c_flow", "出液流速", "液重 / 萃取时间", 2, "g/s", "lime"),
+        c_ey: formula("c_ey", "萃取率", "液重 * 浓度 / 粉量", 1, "%", "rose"),
+        c_ok: formula("c_ok", "判断", "if(萃取率 >= 18, if(萃取率 <= 22, 1, 0), 0)", 0, "", "indigo"),
+      },
+      values: { c_tds: 9.5, c_time: 28 },
+    };
+    const dinner = {
+      id: "d_dinner", title: "周末聚餐计划", updated: Date.now() - 60000,
       body: [
         "# 周末聚餐计划",
         "",
-        "这周六约了 {{c_people}} 位朋友来家里吃饭，每人预算 {{c_budget}}，算下来**总预算**是 {{c_total}}。",
+        "约朋友来家里吃饭，先把人数和预算定下来。",
         "",
-        "> 带铅笔的胶囊可以点开填数；带骰子的胶囊点一下会重新随机；ƒ 胶囊由公式算出，点开能看到算式。",
+        "这周六约了 {{c_people}} 位朋友，每人预算 {{c_budget}}，总预算就是 {{c_total}}。",
         "",
         "## 今天的运气",
         "",
-        "- 掷骰子决定谁洗碗：{{c_dice}} 点",
-        "- 天气预报说气温大约 {{c_temp}}",
+        "- 掷骰子决定谁洗碗：{{c_dice}}",
         "- 超市会员折扣抽到了 {{c_disc}}，实付只要 {{c_pay}}",
         "",
         "## 采购清单",
@@ -44,40 +76,38 @@
         "| --- | --- | --- |",
         "| 牛肉 | {{c_beef}} | 每人约 250 克 |",
         "| 蔬菜 | 3 份 | 随意搭配 |",
-        "| 饮料 | 2 箱 | ~~不要可乐~~ 要气泡水 |",
         "",
         "- [x] 订好时间",
         "- [ ] 买食材",
         "",
-        "---",
-        "",
-        "切换到「编辑」，点任意胶囊就能修改它的区间、公式和颜色。公式里可以用 `+ - * / ^`、括号，以及 `round`、`min`、`max`、`sum`、`avg` 等函数。",
-        "",
       ].join("\n"),
       capsules: {
-        c_people: { id: "c_people", name: "人数", kind: "range", source: "input", min: 2, max: 12, decimals: 0, def: 6, formula: "", unit: "", color: "teal" },
-        c_budget: { id: "c_budget", name: "每人预算", kind: "range", source: "input", min: 50, max: 300, decimals: 0, def: 120, formula: "", unit: "元", color: "amber" },
-        c_total: { id: "c_total", name: "总预算", kind: "formula", source: "random", min: 0, max: 100, decimals: 0, def: null, formula: "人数 * 每人预算", unit: "元", color: "coral" },
-        c_dice: { id: "c_dice", name: "骰子", kind: "range", source: "random", min: 1, max: 6, decimals: 0, def: null, formula: "", unit: "", color: "violet" },
-        c_temp: { id: "c_temp", name: "气温", kind: "range", source: "random", min: 18, max: 31, decimals: 0, def: null, formula: "", unit: "°C", color: "sky" },
-        c_disc: { id: "c_disc", name: "折扣", kind: "range", source: "random", min: 0.7, max: 0.95, decimals: 2, def: null, formula: "", unit: "", color: "lime" },
-        c_pay: { id: "c_pay", name: "实付", kind: "formula", source: "random", min: 0, max: 100, decimals: 0, def: null, formula: "round(总预算 * 折扣)", unit: "元", color: "rose" },
-        c_beef: { id: "c_beef", name: "牛肉", kind: "formula", source: "random", min: 0, max: 100, decimals: 2, def: null, formula: "人数 * 0.25", unit: "千克", color: "indigo" },
+        c_people: range("c_people", "人数", "input", 2, 12, 0, 6, "位", "teal"),
+        c_budget: range("c_budget", "每人预算", "input", 50, 300, 0, 120, "元", "amber"),
+        c_total: formula("c_total", "总预算", "人数 * 每人预算", 0, "元", "coral"),
+        c_dice: range("c_dice", "骰子", "random", 1, 6, 0, null, "点", "violet"),
+        c_disc: range("c_disc", "折扣", "random", 0.7, 0.95, 2, null, "", "lime"),
+        c_pay: formula("c_pay", "实付", "round(总预算 * 折扣)", 0, "元", "rose"),
+        c_beef: formula("c_beef", "牛肉", "人数 * 0.25", 2, "kg", "sky"),
       },
       values: {},
     };
+    return [coffee, dinner];
   }
 
+  /* ================= 存储 ================= */
   function load() {
-    try {
-      const s = JSON.parse(localStorage.getItem(STORE));
-      if (s && Array.isArray(s.docs) && s.docs.length) {
-        s.docs.forEach((d) => { d.capsules = d.capsules || {}; d.values = d.values || {}; d.body = d.body || ""; });
-        return s;
-      }
-    } catch (e) { /* 存储不可用时从示例开始 */ }
-    const d = sampleDoc();
-    return { docs: [d], currentId: d.id, mode: "view", showFx: false };
+    for (const key of [STORE, OLD_STORE]) {
+      try {
+        const s = JSON.parse(localStorage.getItem(key));
+        if (s && Array.isArray(s.docs) && s.docs.length) {
+          s.docs.forEach((d) => { d.capsules = d.capsules || {}; d.values = d.values || {}; d.body = d.body || ""; d.title = d.title || "未命名文档"; });
+          return s;
+        }
+      } catch (e) { /* 存储不可用时从示例开始 */ }
+    }
+    const docs = sampleDocs();
+    return { docs, currentId: docs[0].id, mode: "view", showFx: false };
   }
   const state = load();
   if (!state.docs.some((d) => d.id === state.currentId)) state.currentId = state.docs[0].id;
@@ -85,16 +115,70 @@
 
   let saveTimer = 0, savedAt = null;
   function touch() {
-    const d = cur();
-    d.updated = Date.now();
+    cur().updated = Date.now();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(persist, 350);
+    scheduleHistory();
     renderStatus("正在保存…");
   }
   function persist() {
+    clearTimeout(saveTimer);
     try { localStorage.setItem(STORE, JSON.stringify(state)); savedAt = new Date(); renderStatus(); }
     catch (e) { renderStatus("无法保存到浏览器存储，刷新后改动会丢失"); }
   }
+
+  /* ================= 撤销 / 重做 ================= */
+  const hist = new Map();
+  const snap = (d) => JSON.stringify({ title: d.title, body: d.body, capsules: d.capsules, values: d.values });
+  function H() {
+    const d = cur();
+    if (!hist.has(d.id)) hist.set(d.id, { past: [], future: [], last: snap(d) });
+    return hist.get(d.id);
+  }
+  let histTimer = 0;
+  function scheduleHistory() { clearTimeout(histTimer); histTimer = setTimeout(commitHistory, 450); }
+  function commitHistory() {
+    clearTimeout(histTimer);
+    const h = H(), s = snap(cur());
+    if (s !== h.last) {
+      h.past.push(h.last);
+      if (h.past.length > 200) h.past.shift();
+      h.last = s;
+      h.future = [];
+    }
+    updateUndoButtons();
+  }
+  function restore(s) {
+    const d = cur();
+    Object.assign(d, JSON.parse(s));
+    d.updated = Date.now();
+    closePop();
+    renderAll();
+    H().last = snap(d);
+    persist();
+    updateUndoButtons();
+  }
+  function undo() {
+    commitHistory();
+    const h = H();
+    if (!h.past.length) return;
+    h.future.push(h.last);
+    restore(h.past.pop());
+  }
+  function redo() {
+    commitHistory();
+    const h = H();
+    if (!h.future.length) return;
+    h.past.push(h.last);
+    restore(h.future.pop());
+  }
+  function updateUndoButtons() {
+    const h = H();
+    $("#undo").disabled = !h.past.length && snap(cur()) === h.last;
+    $("#redo").disabled = !h.future.length;
+  }
+  $("#undo").addEventListener("click", undo);
+  $("#redo").addEventListener("click", redo);
 
   /* ================= 胶囊求值 ================= */
   const capsOf = (d) => Object.values(d.capsules);
@@ -114,7 +198,6 @@
     const [lo] = bounds(c);
     return clampToRange(c, typeof c.def === "number" && Number.isFinite(c.def) ? c.def : lo);
   }
-
   function valueOf(d, c, stack = new Set()) {
     if (c.kind === "formula") {
       if (stack.has(c.id)) throw new Error("公式出现了循环引用");
@@ -131,29 +214,66 @@
     return v;
   }
   function safeValue(d, c) { try { return { v: valueOf(d, c) }; } catch (e) { return { err: e.message }; } }
-  function fmtNum(c, v) {
-    const dec = decimalsOf(c);
-    const s = v.toLocaleString("zh-CN", { minimumFractionDigits: c.kind === "formula" ? 0 : dec, maximumFractionDigits: dec });
-    if (!c.unit) return s;
-    return /^[%‰°]/.test(c.unit) ? s + c.unit : `${s} ${c.unit}`;
-  }
+  /* 区间胶囊固定小数位（18.0）；公式胶囊按设定位数显示 */
+  const numText = (c, v) => v.toLocaleString("zh-CN", { minimumFractionDigits: decimalsOf(c), maximumFractionDigits: decimalsOf(c), useGrouping: Math.abs(v) >= 10000 });
+  const fullText = (c, v) => numText(c, v) + (c.unit ? (/^[%‰°:]/.test(c.unit) ? "" : " ") + c.unit : "");
   const kindKey = (c) => (c.kind === "formula" ? "formula" : c.source === "input" ? "input" : "random");
   const kindLabel = { random: "随机", input: "填写", formula: "公式" };
+
+  /* 胶囊内部结构：· 名称  数值 单位 [类型图标] */
+  function pillInner(d, c, { showExpr = false } = {}) {
+    const r = safeValue(d, c), k = kindKey(c);
+    const expr = k === "formula" && showExpr ? `<span class="ex">${esc(Expr.pretty(c.formula))} =</span>` : "";
+    const val = r.err ? "!" : numText(c, r.v);
+    return { r, k, html: `<span class="lb">${esc(c.name)}</span>${expr}<b class="v">${esc(val)}</b>${c.unit && !r.err ? `<span class="u">${esc(c.unit)}</span>` : ""}${KIND_ICON[k]}` };
+  }
+  const missingInner = '<span class="lb">已删除</span><b class="v">?</b>';
+
+  /* ================= 背景：按文档生成一张虚化的"照片" ================= */
+  const bgCanvas = $("#backdrop");
+  function paintBackdrop(seedStr) {
+    let seed = 0;
+    for (const ch of seedStr) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const W = 192, Hh = 120;
+    bgCanvas.width = W; bgCanvas.height = Hh;
+    const g = bgCanvas.getContext("2d");
+    const base = g.createLinearGradient(0, 0, W, Hh);
+    base.addColorStop(0, "#1b1013"); base.addColorStop(.5, "#2a1512"); base.addColorStop(1, "#101418");
+    g.fillStyle = base; g.fillRect(0, 0, W, Hh);
+    const palette = ["#b3261e", "#7a1a12", "#e0782a", "#f0b050", "#c9502a", "#1f6b72", "#2a4a6a", "#4a2344", "#d8c4a0", "#8a3a1a", "#0f3a3f"];
+    for (let i = 0; i < 46; i++) {
+      const x = rnd() * W, y = rnd() * Hh, r = 6 + rnd() * 34, col = palette[Math.floor(rnd() * palette.length)];
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const a = .35 + rnd() * .5;
+      gr.addColorStop(0, col + Math.round(a * 255).toString(16).padStart(2, "0"));
+      gr.addColorStop(1, col + "00");
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * W, y = rnd() * Hh, r = 1.5 + rnd() * 4;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, "rgba(255,230,190,.55)"); gr.addColorStop(1, "rgba(255,230,190,0)");
+      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
 
   /* ================= 模式与整体渲染 ================= */
   const app = $("#app"), view = $("#view"), ed = $("#editor");
   function setMode(m) {
     closePop();
+    commitHistory();
     if (m === "view") prune(cur());
     state.mode = m;
     app.dataset.mode = m;
     $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === m)));
-    if (m === "edit") { renderEditor(); } else { renderView(); }
+    if (m === "edit") renderEditor(); else renderView();
+    H().last = snap(cur());
     persist();
   }
   $$("[data-set-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.setMode)));
 
-  /* 删除正文里已经不存在的胶囊 */
   function prune(d) {
     const used = new Set([...d.body.matchAll(TOKEN)].map((m) => m[1]));
     Object.keys(d.capsules).forEach((id) => { if (!used.has(id)) { delete d.capsules[id]; delete d.values[id]; } });
@@ -162,28 +282,33 @@
   function renderAll() {
     const d = cur();
     $("#title").value = d.title;
+    document.title = `${d.title || "未命名文档"} · 胶囊笔记`;
+    paintBackdrop(d.id);
     renderDocList();
     if (state.mode === "edit") renderEditor(); else renderView();
+    H();
     renderStatus();
+    updateUndoButtons();
   }
 
   function renderStatus(msg) {
     const d = cur();
-    const chars = d.body.replace(TOKEN, "").replace(/\s/g, "").length;
+    const chars = d.body.replace(TOKEN, "").replace(/[\s#>*_`|~-]/g, "").length;
     const n = new Set([...d.body.matchAll(TOKEN)].map((m) => m[1])).size;
-    const saved = msg || (savedAt ? `已自动保存 ${savedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "改动会自动保存");
+    const saved = msg || (savedAt ? `已保存 ${savedAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "自动保存");
     $("#status").textContent = `${chars} 字 · ${n} 个胶囊 · ${saved}`;
   }
 
-  /* ================= 文档列表 ================= */
+  /* ================= 文档抽屉 ================= */
+  const drawer = $("#docsDrawer");
+  $("#docsBtn").addEventListener("click", () => drawer.show());
   function renderDocList() {
-    const list = $("#docList");
     const docs = [...state.docs].sort((a, b) => b.updated - a.updated);
-    list.innerHTML = docs.map((d) => `
+    $("#docList").innerHTML = docs.map((d) => `
       <div class="doc-item${d.id === state.currentId ? " on" : ""}" data-id="${d.id}">
         <button class="open" type="button"${d.id === state.currentId ? ' aria-current="page"' : ""}>
           <span class="t">${esc(d.title || "未命名文档")}</span>
-          <span class="d">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+          <span class="d">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${Object.keys(d.capsules).length} 个胶囊</span>
         </button>
         ${state.docs.length > 1 ? `<button class="del" type="button" aria-label="删除「${esc(d.title)}」">删除</button>` : ""}
       </div>`).join("");
@@ -192,70 +317,70 @@
     const item = e.target.closest(".doc-item");
     if (!item) return;
     const id = item.dataset.id;
-    if (e.target.closest(".del")) {
-      const btn = e.target.closest(".del");
-      if (!btn.classList.contains("armed")) {
-        btn.classList.add("armed");
-        btn.textContent = "确认删除";
-        setTimeout(() => { if (btn.isConnected) { btn.classList.remove("armed"); btn.textContent = "删除"; } }, 3000);
+    const del = e.target.closest(".del");
+    if (del) {
+      if (!del.classList.contains("armed")) {
+        del.classList.add("armed");
+        del.textContent = "确认删除";
+        setTimeout(() => { if (del.isConnected) { del.classList.remove("armed"); del.textContent = "删除"; } }, 3000);
         return;
       }
       state.docs = state.docs.filter((d) => d.id !== id);
+      hist.delete(id);
       if (state.currentId === id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
       persist();
       renderAll();
       return;
     }
     if (e.target.closest(".open")) {
+      commitHistory();
       prune(cur());
       state.currentId = id;
-      closeSide();
+      drawer.hide();
       persist();
       renderAll();
     }
   });
   $("#newDoc").addEventListener("click", () => {
-    const d = { id: uid("d_"), title: "未命名文档", updated: Date.now(), body: "# 未命名文档\n\n", capsules: {}, values: {} };
+    commitHistory();
+    const d = { id: uid("d_"), title: "未命名文档", updated: Date.now(), body: "# 未命名文档\n\n在这里写一句简介。\n\n", capsules: {}, values: {} };
     state.docs.push(d);
     state.currentId = d.id;
-    closeSide();
-    setMode("edit");
+    drawer.hide();
+    state.mode = "edit";
+    app.dataset.mode = "edit";
+    $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === "edit")));
     renderAll();
-    $("#title").select();
+    persist();
+    setTimeout(() => $("#title").select(), 250);
   });
   $("#title").addEventListener("input", (e) => {
     cur().title = e.target.value;
+    document.title = `${e.target.value || "未命名文档"} · 胶囊笔记`;
     touch();
     renderDocList();
   });
   $("#title").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); (state.mode === "edit" ? ed : e.target).focus(); } });
-  const closeSide = () => app.classList.remove("side-open");
-  $("#menu").addEventListener("click", () => app.classList.add("side-open"));
-  $("#scrim").hidden = false;
-  $("#scrim").addEventListener("click", closeSide);
+
+  $("#helpBtn").addEventListener("click", () => $("#helpDlg").show());
 
   /* ================= 浏览视图 ================= */
   function viewPillHTML(d, id) {
     const c = d.capsules[id];
-    if (!c) return `<span class="pill err" title="这个胶囊已被删除">${ICON.missing}<b>已删除</b></span>`;
-    const k = kindKey(c), r = safeValue(d, c);
-    const shown = r.err ? "出错" : fmtNum(c, r.v);
-    const verb = { random: "点击重新随机", input: "点击填写数值", formula: "点击查看算式" }[k];
-    const expr = k === "formula" ? `<span class="expr">${esc(Expr.pretty(c.formula))} =</span>` : "";
-    return `<button type="button" class="pill${r.err ? " err" : ""}" data-id="${id}" data-kind="${k}" data-color="${c.color}" aria-label="${esc(c.name)}：${esc(shown)}，${verb}" title="${esc(c.name)} · ${kindLabel[k]}">${ICON[k]}${expr}<b>${esc(shown)}</b></button>`;
+    if (!c) return `<span class="pill err" title="这个胶囊已被删除">${missingInner}</span>`;
+    const { r, k, html } = pillInner(d, c, { showExpr: true });
+    const shown = r.err ? r.err : fullText(c, r.v);
+    const verb = { random: "点击重新抽取", input: "点击填写数值", formula: "点击查看算式" }[k];
+    return `<button type="button" class="pill${r.err ? " err" : ""}" data-id="${id}" data-kind="${k}" data-color="${c.color}" aria-label="${esc(c.name)}：${esc(shown)}，${verb}" title="${esc(r.err || `${c.name} · ${kindLabel[k]} · ${verb}`)}">${html}</button>`;
   }
   function renderView() {
     const d = cur();
     const html = MD.render(d.body).replace(TOKEN, (_, id) => viewPillHTML(d, id));
     view.innerHTML = html.trim() ? html : '<p class="empty">这篇文档还是空的，切换到「编辑」开始写吧。</p>';
     view.classList.toggle("show-fx", !!state.showFx);
-    const counts = { random: 0, input: 0, formula: 0 };
-    new Set([...d.body.matchAll(TOKEN)].map((m) => m[1])).forEach((id) => { const c = d.capsules[id]; if (c) counts[kindKey(c)]++; });
-    $("#summary").textContent = `${counts.random} 个随机 · ${counts.input} 个填写 · ${counts.formula} 个公式`;
-    $("#rerollAll").disabled = !counts.random;
-    persist();
+    const hasRandom = capsOf(d).some((c) => kindKey(c) === "random" && d.body.includes(tok(c.id)));
+    $("#rerollAll").disabled = !hasRandom;
   }
-  /* 只更新胶囊里的数字，不重建整篇文档 */
   function refreshPills(skip) {
     const d = cur();
     $$(".pill[data-id]", view).forEach((el) => {
@@ -265,15 +390,16 @@
       const fresh = tmp.firstElementChild;
       el.className = fresh.className;
       el.innerHTML = fresh.innerHTML;
-      el.setAttribute("aria-label", fresh.getAttribute("aria-label"));
+      el.setAttribute("aria-label", fresh.getAttribute("aria-label") || "");
+      el.title = fresh.title;
     });
   }
   function roll(el, c) {
     if (reduceMotion) { refreshPills(); return; }
     el.classList.add("rolling");
-    const b = el.querySelector("b"), t0 = performance.now();
+    const v = el.querySelector(".v"), t0 = performance.now();
     const tick = (now) => {
-      if (now - t0 < 420) { b.textContent = fmtNum(c, randomIn(c)); requestAnimationFrame(tick); }
+      if (now - t0 < 420) { v.textContent = numText(c, randomIn(c)); requestAnimationFrame(tick); }
       else { el.classList.remove("rolling"); refreshPills(); }
     };
     requestAnimationFrame(tick);
@@ -293,22 +419,29 @@
   });
   $("#rerollAll").addEventListener("click", () => {
     const d = cur();
-    capsOf(d).forEach((c) => { if (c.kind === "range" && c.source === "random") d.values[c.id] = randomIn(c); });
+    capsOf(d).forEach((c) => { if (kindKey(c) === "random") d.values[c.id] = randomIn(c); });
     touch();
-    const rolling = $$('.pill[data-kind="random"]', view);
-    if (!rolling.length || reduceMotion) { refreshPills(); return; }
-    rolling.forEach((el) => roll(el, d.capsules[el.dataset.id]));
+    const els = $$('.pill[data-kind="random"]', view);
+    if (!els.length || reduceMotion) { refreshPills(); return; }
+    els.forEach((el) => roll(el, d.capsules[el.dataset.id]));
   });
-  $("#showFx").addEventListener("change", (e) => { state.showFx = e.target.checked; view.classList.toggle("show-fx", state.showFx); persist(); });
+  const fxBtn = $("#showFx");
+  fxBtn.setAttribute("aria-pressed", String(!!state.showFx));
+  fxBtn.addEventListener("click", () => {
+    state.showFx = !state.showFx;
+    fxBtn.setAttribute("aria-pressed", String(state.showFx));
+    view.classList.toggle("show-fx", state.showFx);
+    persist();
+  });
 
   /* ================= 浮层（浏览时填写 / 查看算式） ================= */
   const pop = $("#pop");
   let popAnchor = null;
   function placePop(anchor) {
     const r = anchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
-    let left = Math.min(Math.max(16, r.left + r.width / 2 - w / 2), innerWidth - w - 16);
-    let top = r.bottom + 8;
-    if (top + h > innerHeight - 12) top = Math.max(12, r.top - h - 8);
+    const left = Math.min(Math.max(16, r.left + r.width / 2 - w / 2), innerWidth - w - 16);
+    let top = r.bottom + 10;
+    if (top + h > innerHeight - 12) top = Math.max(12, r.top - h - 10);
     pop.style.left = `${left}px`;
     pop.style.top = `${top}px`;
   }
@@ -323,6 +456,7 @@
   function closePop(restoreFocus) {
     if (pop.hidden) return;
     pop.hidden = true;
+    pop.innerHTML = "";
     if (restoreFocus && popAnchor && popAnchor.isConnected) popAnchor.focus();
     popAnchor = null;
   }
@@ -330,28 +464,33 @@
     const d = cur(), [lo, hi] = bounds(c), dec = decimalsOf(c), step = dec ? Math.pow(10, -dec) : 1;
     const v = valueOf(d, c);
     showPop(el, `
-      <div class="pop-h"><span class="dot"></span>${esc(c.name)}<small>${fmtNum({ ...c, unit: "" }, lo)} – ${fmtNum({ ...c, unit: "" }, hi)}${c.unit ? " " + esc(c.unit) : ""}</small></div>
-      <input type="number" id="popNum" inputmode="decimal" min="${lo}" max="${hi}" step="${step}" value="${v}" aria-label="${esc(c.name)}">
-      <input type="range" id="popRange" min="${lo}" max="${hi}" step="${step}" value="${v}" aria-label="${esc(c.name)} 滑块">
-      <p class="note" id="popNote">超出区间的数会自动调整到最近的边界。</p>
-      <div class="row"><button type="button" class="btn" id="popReset">恢复默认</button><button type="button" class="btn btn-primary" id="popOk">完成</button></div>`, c);
+      <div class="pop-h"><span class="dot"></span>${esc(c.name)}<small>${numText(c, lo)} – ${numText(c, hi)}${c.unit ? " " + esc(c.unit) : ""}</small></div>
+      <sl-input type="number" id="popNum" inputmode="decimal" min="${lo}" max="${hi}" step="${step}" value="${v}" aria-label="${esc(c.name)}">${c.unit ? `<span slot="suffix">${esc(c.unit)}</span>` : ""}</sl-input>
+      <sl-range id="popRange" min="${lo}" max="${hi}" step="${step}" value="${v}" tooltip="none" aria-label="${esc(c.name)} 滑块"></sl-range>
+      <p class="note">超出区间的数会自动调整到最近的边界。</p>
+      <div class="row"><sl-button size="small" id="popReset">恢复默认</sl-button><sl-button size="small" variant="primary" id="popOk">完成</sl-button></div>`, c);
     const num = $("#popNum"), rng = $("#popRange");
     const apply = (raw, fromRange) => {
       const n = parseFloat(raw);
       if (!Number.isFinite(n)) return;
       d.values[c.id] = clampToRange(c, n);
-      if (fromRange) num.value = d.values[c.id]; else rng.value = d.values[c.id];
+      if (fromRange) num.value = String(d.values[c.id]); else rng.value = d.values[c.id];
       touch();
       refreshPills();
     };
-    num.addEventListener("input", () => apply(num.value, false));
-    num.addEventListener("change", () => { num.value = d.values[c.id]; });
-    rng.addEventListener("input", () => apply(rng.value, true));
+    num.addEventListener("sl-input", () => apply(num.value, false));
+    num.addEventListener("sl-change", () => { num.value = String(d.values[c.id]); });
+    rng.addEventListener("sl-input", () => apply(rng.value, true));
     num.addEventListener("keydown", (e) => { if (e.key === "Enter") closePop(true); });
     $("#popOk").addEventListener("click", () => closePop(true));
-    $("#popReset").addEventListener("click", () => { d.values[c.id] = initialValue(c); num.value = rng.value = d.values[c.id]; touch(); refreshPills(); });
-    num.focus();
-    num.select();
+    $("#popReset").addEventListener("click", () => {
+      d.values[c.id] = initialValue(c);
+      num.value = String(d.values[c.id]);
+      rng.value = d.values[c.id];
+      touch();
+      refreshPills();
+    });
+    requestAnimationFrame(() => { num.focus(); num.select(); });
   }
   function openFormulaPop(el, c) {
     const d = cur(), r = safeValue(d, c);
@@ -359,21 +498,23 @@
       const o = byName(d, name);
       if (!o) return name;
       const rv = safeValue(d, o);
-      return rv.err ? "?" : rv.v.toLocaleString("zh-CN", { maximumFractionDigits: decimalsOf(o) });
+      return rv.err ? "?" : numText(o, rv.v);
     });
     showPop(el, `
       <div class="pop-h"><span class="dot"></span>${esc(c.name)}<small>公式</small></div>
       <div class="calc">
         <div>${esc(c.name)} = ${esc(Expr.pretty(c.formula))}</div>
         <div>= ${esc(sub)}</div>
-        <div class="res">= ${r.err ? esc(r.err) : esc(fmtNum(c, r.v))}</div>
+        <div class="res">= ${r.err ? esc(r.err) : esc(fullText(c, r.v))}</div>
       </div>
-      <p class="note">公式里用到的胶囊变化时，这里会自动重新计算。</p>
-      <div class="row"><button type="button" class="btn" id="popOk">关闭</button></div>`, c);
+      <p class="note">公式里用到的胶囊一变，这里会自动重新计算。</p>
+      <div class="row"><sl-button size="small" id="popOk">关闭</sl-button></div>`, c);
     $("#popOk").addEventListener("click", () => closePop(true));
-    $("#popOk").focus();
+    requestAnimationFrame(() => $("#popOk")?.focus());
   }
-  document.addEventListener("pointerdown", (e) => { if (!pop.hidden && !pop.contains(e.target) && e.target !== popAnchor && !popAnchor?.contains(e.target)) closePop(); });
+  document.addEventListener("pointerdown", (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && e.target !== popAnchor && !popAnchor?.contains(e.target)) closePop();
+  });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) closePop(true); });
   addEventListener("resize", () => closePop());
   document.addEventListener("scroll", () => { if (!pop.hidden && popAnchor) placePop(popAnchor); }, true);
@@ -391,15 +532,16 @@
     el.dataset.id = id;
     if (!c) {
       el.classList.add("err");
-      el.innerHTML = `${ICON.missing}<b>已删除</b>`;
+      el.innerHTML = missingInner;
       el.title = "这个胶囊已被删除，可以直接删掉这个占位";
       return el;
     }
-    const r = safeValue(d, c), k = kindKey(c);
+    const { r, k, html } = pillInner(d, c);
     el.dataset.color = c.color;
+    el.dataset.kind = k;
     if (r.err) el.classList.add("err");
     el.title = `${c.name} · ${kindLabel[k]}${r.err ? " · " + r.err : ""}（点击编辑）`;
-    el.innerHTML = `${ICON[k]}<span class="nm">${esc(c.name)}</span><b>${r.err ? "!" : esc(fmtNum(c, r.v))}</b>`;
+    el.innerHTML = html;
     return el;
   }
   function renderEditor() {
@@ -433,7 +575,7 @@
     walk(ed);
     return s;
   }
-  /* 光标位置 <-> 正文字符偏移 */
+  /* 光标位置 <-> 正文字符偏移（胶囊按其占位符长度计算） */
   function offsetOf(node, off) {
     const pill = node.nodeType === 1 ? node.closest?.(".pill") : node.parentElement?.closest(".pill");
     if (pill && ed.contains(pill)) { node = pill.parentNode; off = [...node.childNodes].indexOf(pill) + 1; }
@@ -481,7 +623,6 @@
     sel.removeAllRanges();
     sel.addRange(r);
   }
-  /* 以字符串方式修改正文，然后重建编辑器并恢复选区 */
   function editBody(fn) {
     const d = cur();
     const [a, b] = getSel();
@@ -492,7 +633,6 @@
     ed.focus();
     setSel(r.a, r.b ?? r.a);
     touch();
-    renderStatus();
   }
   const insertText = (text) => editBody((s, a, b) => ({ body: s.slice(0, a) + text + s.slice(b), a: a + text.length }));
 
@@ -504,7 +644,6 @@
       if (messy) { const [a] = getSel(); renderEditor(); setSel(Math.min(a, d.body.length)); }
     }
     touch();
-    renderStatus();
   });
   ed.addEventListener("keydown", (e) => {
     if (e.isComposing || e.keyCode === 229) return;
@@ -540,7 +679,7 @@
     if (cur().capsules[p.dataset.id]) openDialog(p.dataset.id, { at: a });
   });
 
-  /* 工具栏：mousedown 阻止默认行为，保证选区还留在编辑器里 */
+  /* 工具栏：mousedown 阻止默认行为，让选区留在编辑器里 */
   $("#toolbar").addEventListener("mousedown", (e) => { if (e.target.closest("button")) e.preventDefault(); });
   function wrap(pre, post, placeholder) {
     editBody((s, a, b) => {
@@ -585,14 +724,15 @@
     openDialog(null, { at: a, end: b });
   });
 
-  /* ================= 胶囊设置对话框 ================= */
-  const dlg = $("#dlg");
+  /* ================= 胶囊设置对话框（Shoelace） ================= */
+  const dlg = $("#capDlg");
   let ctx = null;
   function newCapsule(d) {
     let n = 1;
     while (byName(d, `数值${n}`)) n++;
     return { id: uid("c_"), name: `数值${n}`, kind: "range", source: "random", min: 1, max: 100, decimals: 0, def: null, formula: "", unit: "", color: COLORS[capsOf(d).length % COLORS.length][0] };
   }
+  const decOptions = (c) => [0, 1, 2, 3, 4].map((n) => `<sl-option value="${n}">${n} 位</sl-option>`).join("");
   function openDialog(id, opts = {}) {
     const d = cur();
     const base = id ? d.capsules[id] : newCapsule(d);
@@ -600,87 +740,98 @@
     ctx = { c, isNew: !id, at: opts.at ?? d.body.length, end: opts.end ?? opts.at ?? d.body.length, origName: base.name, orig: base };
     const others = capsOf(d).filter((o) => o.id !== c.id);
     const num = (v) => (v === null || v === undefined || v === "" ? "" : v);
+    dlg.label = ctx.isNew ? "插入胶囊" : "编辑胶囊";
     dlg.innerHTML = `
-      <form method="dialog" id="capForm" novalidate>
-        <div class="dlg-h"><span class="pill" data-color="${c.color}" id="dlgBadge">${ICON[kindKey(c)]}</span><h2 id="dlgTitle">${ctx.isNew ? "插入胶囊" : "编辑胶囊"}</h2></div>
-        <div class="dlg-body">
-          <label class="field"><span>名称（公式里用这个名字引用它）</span><input type="text" id="fName" value="${esc(c.name)}" autocomplete="off" maxlength="24"></label>
-          <fieldset class="field"><legend>类型</legend>
-            <div class="choice">
-              <label><input type="radio" name="kind" value="range"${c.kind === "range" ? " checked" : ""}><b>区间</b><small>在最小值和最大值之间取数</small></label>
-              <label><input type="radio" name="kind" value="formula"${c.kind === "formula" ? " checked" : ""}><b>计算函数</b><small>用其它胶囊算出来</small></label>
-            </div>
-          </fieldset>
-          <div id="grpRange" class="field" style="gap:16px">
-            <div class="grid3">
-              <label class="field"><span>最小值</span><input type="number" id="fMin" value="${num(c.min)}" step="any"></label>
-              <label class="field"><span>最大值</span><input type="number" id="fMax" value="${num(c.max)}" step="any"></label>
-              <label class="field"><span>小数位</span><select id="fDecR">${[0, 1, 2, 3, 4].map((n) => `<option${n === decimalsOf(c) ? " selected" : ""}>${n}</option>`).join("")}</select></label>
-            </div>
-            <fieldset class="field"><legend>浏览时</legend>
-              <div class="choice">
-                <label><input type="radio" name="source" value="random"${c.source !== "input" ? " checked" : ""}><b>随机生成</b><small>点一下重新随机</small></label>
-                <label><input type="radio" name="source" value="input"${c.source === "input" ? " checked" : ""}><b>用户填写</b><small>读者自己输入数值</small></label>
-              </div>
-            </fieldset>
-            <label class="field" id="grpDef"><span>默认值（可不填，默认取最小值）</span><input type="number" id="fDef" value="${num(c.def)}" step="any"></label>
+      <div class="form" id="capForm">
+        <sl-input id="fName" label="名称" help-text="公式里用这个名字引用它，可以用中文" value="${esc(c.name)}" maxlength="24" autocomplete="off"></sl-input>
+        <sl-radio-group id="fKind" label="类型" value="${c.kind}">
+          <sl-radio-button value="range">区间</sl-radio-button>
+          <sl-radio-button value="formula">计算函数</sl-radio-button>
+        </sl-radio-group>
+        <div id="grpRange" class="form">
+          <div class="grid3">
+            <sl-input id="fMin" type="number" label="最小值" value="${num(c.min)}" step="any"></sl-input>
+            <sl-input id="fMax" type="number" label="最大值" value="${num(c.max)}" step="any"></sl-input>
+            <sl-select id="fDecR" label="小数位" value="${decimalsOf(c)}">${decOptions(c)}</sl-select>
           </div>
-          <div id="grpFormula" class="field" style="gap:10px">
-            <label class="field"><span>计算公式</span><textarea id="fFormula" rows="2" placeholder="例如：人数 * 每人预算" spellcheck="false">${esc(c.formula || "")}</textarea></label>
-            ${others.length ? `<div class="chips" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-color="${o.color}" data-ins="${esc(o.name)}">${esc(o.name)}</button>`).join("")}</div>` : '<p class="hint">文档里还没有其它胶囊。先插入几个区间胶囊，再用公式把它们算起来。</p>'}
-            <p class="hint">支持 + − × ÷ ^ % 和括号，函数：round(x, 位数)、min、max、sum、avg、abs、sqrt、pow、floor、ceil、if(条件, 是, 否)。</p>
-            <label class="field" style="max-width:140px"><span>小数位</span><select id="fDecF">${[0, 1, 2, 3, 4].map((n) => `<option${n === decimalsOf(c) ? " selected" : ""}>${n}</option>`).join("")}</select></label>
-          </div>
-          <label class="field"><span>单位（可选）</span><input type="text" id="fUnit" value="${esc(c.unit || "")}" maxlength="8" placeholder="例如：元、%、千克"></label>
-          <fieldset class="field"><legend>颜色</legend>
-            <div class="swatches">${COLORS.map(([k, label]) => `<label data-color="${k}" title="${label}"><input type="radio" name="color" value="${k}"${c.color === k ? " checked" : ""} aria-label="${label}"></label>`).join("")}</div>
-          </fieldset>
-          <div class="field"><span>预览</span><div class="preview" id="preview" aria-live="polite"></div></div>
+          <sl-radio-group id="fSource" label="浏览时" value="${c.source === "input" ? "input" : "random"}">
+            <sl-radio-button value="random">随机生成</sl-radio-button>
+            <sl-radio-button value="input">用户填写</sl-radio-button>
+          </sl-radio-group>
+          <sl-input id="fDef" type="number" label="默认值" help-text="不填则取最小值" value="${num(c.def)}" step="any" clearable></sl-input>
         </div>
-        <div class="dlg-f">
-          ${ctx.isNew ? "" : '<button type="button" class="btn btn-danger" id="dlgDel">删除</button>'}
-          <span class="spacer"></span>
-          <button type="button" class="btn" id="dlgCancel">取消</button>
-          <button type="submit" class="btn btn-primary" id="dlgSave">${ctx.isNew ? "插入" : "保存"}</button>
+        <div id="grpFormula">
+          <sl-textarea id="fFormula" label="计算公式" rows="2" resize="auto" placeholder="例如：液重 / 粉量" value="${esc(c.formula || "")}" spellcheck="false"></sl-textarea>
+          ${others.length ? `<div class="chips" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-kind="${kindKey(o)}" data-color="${o.color}" data-ins="${esc(o.name)}"><span class="lb">${esc(o.name)}</span></button>`).join("")}</div>` : '<p class="hint">文档里还没有其它胶囊。先插入几个区间胶囊，再用公式把它们算起来。</p>'}
+          <p class="hint">支持 + − × ÷ ^ % 和括号；函数 round(x, 位数)、min、max、sum、avg、abs、sqrt、pow、floor、ceil、if(条件, 是, 否)。</p>
+          <div style="max-width:160px;margin-top:14px"><sl-select id="fDecF" label="小数位" value="${decimalsOf(c)}">${decOptions(c)}</sl-select></div>
         </div>
-      </form>`;
-    const form = $("#capForm", dlg);
-    form.addEventListener("input", syncForm);
-    form.addEventListener("change", syncForm);
-    form.addEventListener("submit", (e) => { e.preventDefault(); saveDialog(); });
-    $("#dlgCancel", dlg).addEventListener("click", () => dlg.close());
+        <sl-input id="fUnit" label="单位" placeholder="例如 g、%、元" value="${esc(c.unit || "")}" maxlength="8"></sl-input>
+        <div>
+          <span class="label" id="colorLabel">颜色</span>
+          <div class="swatches" role="radiogroup" aria-labelledby="colorLabel">${COLORS.map(([k, label]) => `<label data-color="${k}" title="${label}"><input type="radio" name="color" value="${k}"${c.color === k ? " checked" : ""} aria-label="${label}"></label>`).join("")}</div>
+        </div>
+        <div>
+          <span class="label">预览</span>
+          <div class="preview" id="preview" aria-live="polite"></div>
+        </div>
+      </div>
+      <div slot="footer" class="dlg-foot">
+        ${ctx.isNew ? "" : '<sl-button variant="danger" id="dlgDel">删除</sl-button>'}
+        <span class="spacer"></span>
+        <sl-button id="dlgCancel">取消</sl-button>
+        <sl-button variant="primary" id="dlgSave">${ctx.isNew ? "插入" : "保存"}</sl-button>
+      </div>`;
+    ["sl-input", "sl-change", "change"].forEach((ev) => dlg.addEventListener(ev, syncForm));
+    $("#dlgCancel", dlg).addEventListener("click", () => dlg.hide());
+    $("#dlgSave", dlg).addEventListener("click", saveDialog);
+    dlg.addEventListener("keydown", onDialogKey);
     $$("[data-ins]", dlg).forEach((b) => b.addEventListener("click", () => {
-      const ta = $("#fFormula", dlg), s = ta.selectionStart, e2 = ta.selectionEnd, name = b.dataset.ins;
+      const ta = $("#fFormula", dlg), name = b.dataset.ins;
+      const native = ta.shadowRoot?.querySelector("textarea");
+      const s = native ? native.selectionStart : ta.value.length, e2 = native ? native.selectionEnd : ta.value.length;
       ta.value = ta.value.slice(0, s) + name + ta.value.slice(e2);
       ta.focus();
-      ta.setSelectionRange(s + name.length, s + name.length);
+      requestAnimationFrame(() => ta.setSelectionRange(s + name.length, s + name.length));
       syncForm();
     }));
     const del = $("#dlgDel", dlg);
     if (del) del.addEventListener("click", () => {
       if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "确定删除？"; return; }
       removeCapsule(c.id);
-      dlg.close();
+      dlg.hide();
     });
-    syncForm();
-    dlg.showModal();
-    const nameInput = $("#fName", dlg);
-    nameInput.focus();
-    nameInput.select();
+    customElements.whenDefined("sl-input").then(() => {
+      syncForm();
+      dlg.show();
+      setTimeout(() => { const n = $("#fName", dlg); n.focus(); n.select(); }, 60);
+    });
   }
+  function onDialogKey(e) {
+    if (e.key === "Enter" && !e.shiftKey && e.target.tagName !== "SL-TEXTAREA" && !$("#dlgSave", dlg).disabled && e.target.closest?.("#capForm")) {
+      e.preventDefault();
+      saveDialog();
+    }
+  }
+  dlg.addEventListener("sl-after-hide", (e) => {
+    if (e.target !== dlg) return;
+    ["sl-input", "sl-change", "change"].forEach((ev) => dlg.removeEventListener(ev, syncForm));
+    dlg.removeEventListener("keydown", onDialogKey);
+    if (state.mode === "edit") ed.focus();
+  });
   function readForm() {
     const c = ctx.c, f = (id) => $(id, dlg);
-    const numOrNull = (v) => (v.trim() === "" ? null : Number(v));
-    c.name = f("#fName").value.trim();
-    c.kind = $('input[name="kind"]:checked', dlg).value;
-    c.source = $('input[name="source"]:checked', dlg).value;
+    const numOrNull = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
+    c.name = String(f("#fName").value).trim();
+    c.kind = f("#fKind").value || "range";
+    c.source = f("#fSource").value || "random";
     c.min = numOrNull(f("#fMin").value);
     c.max = numOrNull(f("#fMax").value);
     c.def = numOrNull(f("#fDef").value);
-    c.formula = f("#fFormula").value.trim();
-    c.decimals = +(c.kind === "formula" ? f("#fDecF") : f("#fDecR")).value;
-    c.unit = f("#fUnit").value.trim();
-    c.color = $('input[name="color"]:checked', dlg).value;
+    c.formula = String(f("#fFormula").value).trim();
+    c.decimals = +((c.kind === "formula" ? f("#fDecF") : f("#fDecR")).value || 0);
+    c.unit = String(f("#fUnit").value).trim();
+    c.color = ($('input[name="color"]:checked', dlg) || {}).value || c.color;
     return c;
   }
   function validate(c) {
@@ -699,7 +850,7 @@
     try { Expr.compile(c.formula); } catch (e) { return e.message; }
     return null;
   }
-  /* 在一份临时副本上试算，避免对话框里的改动提前写入文档 */
+  /* 在临时副本上试算，对话框里的改动不会提前写入文档 */
   function trialDoc(c) {
     const d = cur();
     const capsules = { ...d.capsules, [c.id]: c };
@@ -709,24 +860,22 @@
     return { ...d, capsules, values: { ...d.values, [c.id]: undefined } };
   }
   function syncForm() {
+    if (!ctx) return;
     const c = readForm();
     $("#grpRange", dlg).hidden = c.kind !== "range";
     $("#grpFormula", dlg).hidden = c.kind !== "formula";
-    $("#grpDef", dlg).hidden = c.source !== "input";
-    const badge = $("#dlgBadge", dlg);
-    badge.dataset.color = c.color;
-    badge.innerHTML = ICON[kindKey(c)];
+    $("#fDef", dlg).hidden = c.source !== "input";
     const prev = $("#preview", dlg), save = $("#dlgSave", dlg);
-    let err = validate(c), value = null;
+    let err = validate(c), html = "";
     if (!err) {
-      const r = safeValue(trialDoc(c), c);
-      if (r.err) err = r.err; else value = r.v;
+      const t = trialDoc(c), r = safeValue(t, c);
+      if (r.err) err = r.err; else html = pillInner(t, c).html;
     }
     save.disabled = !!err;
     if (err) { prev.innerHTML = `<span class="msg bad">${esc(err)}</span>`; return; }
     const k = kindKey(c);
-    const text = { random: "浏览时点一下会在区间内重新随机", input: "浏览时读者可以点开填写", formula: `= ${Expr.pretty(c.formula)}` }[k];
-    prev.innerHTML = `<span class="pill" data-color="${c.color}">${ICON[k]}<b>${esc(fmtNum(c, value))}</b></span><span class="msg">${esc(text)}</span>`;
+    const text = { random: "浏览时点一下会在区间内重新抽取", input: "浏览时读者可以点开填写", formula: `= ${Expr.pretty(c.formula)}` }[k];
+    prev.innerHTML = `<span class="pill demo" data-kind="${k}" data-color="${c.color}">${html}</span><span class="msg">${esc(text)}</span>`;
   }
   function saveDialog() {
     const c = readForm();
@@ -735,25 +884,25 @@
     if (!ctx.isNew && old.name !== c.name) {
       capsOf(d).forEach((o) => { if (o.id !== c.id && o.kind === "formula") o.formula = Expr.renameRef(o.formula, old.name, c.name); });
     }
-    if (c.kind === "formula") delete c.def;
+    if (c.kind === "formula") c.def = null;
     d.capsules[c.id] = c;
     if (c.kind === "formula") delete d.values[c.id];
     else {
       const v = d.values[c.id];
       const changed = ctx.isNew || old.kind !== c.kind || old.source !== c.source || old.min !== c.min || old.max !== c.max || old.decimals !== c.decimals || old.def !== c.def;
-      if (changed || typeof v !== "number") d.values[c.id] = initialValue(c);
-      else d.values[c.id] = clampToRange(c, v);
+      d.values[c.id] = changed || typeof v !== "number" ? initialValue(c) : clampToRange(c, v);
     }
-    dlg.close();
-    if (ctx.isNew) {
-      const t = tok(c.id), a = Math.min(ctx.at, d.body.length), b = Math.min(ctx.end, d.body.length);
+    const isNew = ctx.isNew, at = ctx.at, end = ctx.end;
+    ctx = null;
+    dlg.hide();
+    if (isNew) {
+      const t = tok(c.id), a = Math.min(at, d.body.length), b = Math.min(end, d.body.length);
       d.body = d.body.slice(0, a) + t + d.body.slice(b);
       renderEditor();
       ed.focus();
       setSel(a + t.length);
     } else refreshEditorPills();
     touch();
-    renderStatus();
   }
   function refreshEditorPills() {
     const d = cur();
@@ -764,31 +913,35 @@
     d.body = d.body.split(tok(id)).join("");
     delete d.capsules[id];
     delete d.values[id];
+    ctx = null;
     renderEditor();
     touch();
-    renderStatus();
   }
 
-  /* ================= 玻璃反光：记录指针在面板内的位置 ================= */
-  const GLASS = ".side, .top, .bar, .page, .pop, .dlg, .pill, .btn";
+  /* ================= 卡片反光跟随指针 ================= */
+  const card = $(".card");
   document.addEventListener("pointermove", (e) => {
-    let el = e.target instanceof Element ? e.target.closest(GLASS) : null;
-    while (el) {
-      const r = el.getBoundingClientRect();
-      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
-      el.style.setProperty("--my", `${e.clientY - r.top}px`);
-      el = el.parentElement && el.parentElement.closest(GLASS);
-    }
+    const r = card.getBoundingClientRect();
+    card.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    card.style.setProperty("--my", `${e.clientY - r.top}px`);
   }, { passive: true });
 
   /* ================= 快捷键 & 启动 ================= */
+  const inNativeField = (el) => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName?.startsWith("SL-"));
   document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") { e.preventDefault(); if (!dlg.open) setMode(state.mode === "edit" ? "view" : "edit"); }
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    const k = e.key.toLowerCase();
+    if (k === "e") { e.preventDefault(); if (!dlg.open) setMode(state.mode === "edit" ? "view" : "edit"); return; }
+    if ((k === "z" || k === "y") && !dlg.open && !inNativeField(document.activeElement)) {
+      e.preventDefault();
+      if (k === "y" || e.shiftKey) redo(); else undo();
+    }
   });
-  $("#showFx").checked = !!state.showFx;
   app.dataset.mode = state.mode;
   $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === state.mode)));
   renderAll();
+  persist();
 
-  window.__capsuleNotes = { state, setMode, openDialog };
+  window.__capsuleNotes = { state, setMode, openDialog, undo, redo };
 })();

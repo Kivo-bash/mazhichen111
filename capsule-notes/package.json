@@ -1,0 +1,14 @@
+{
+  "name": "capsule-notes",
+  "private": true,
+  "description": "胶囊笔记：带数字胶囊的 Markdown 笔记",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build:vendor": "esbuild tools/shoelace-entry.js --bundle --minify --format=iife --legal-comments=eof --outfile=vendor/shoelace.js && cp node_modules/@shoelace-style/shoelace/dist/themes/dark.css vendor/shoelace-dark.css",
+    "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@shoelace-style/shoelace": "2.20.1",
+    "esbuild": "0.24.0"
+  }
+}
