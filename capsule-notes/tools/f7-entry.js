@@ -5,9 +5,12 @@ import Dialog from "framework7/components/dialog";
 import Popup from "framework7/components/popup";
 import Popover from "framework7/components/popover";
 import Toast from "framework7/components/toast";
+import Panel from "framework7/components/panel";
 import Stepper from "framework7/components/stepper";
 import Range from "framework7/components/range";
+import Searchbar from "framework7/components/searchbar";
+import Swipeout from "framework7/components/swipeout";
 import Input from "framework7/components/input";
 
-Framework7.use([Dialog, Popup, Popover, Toast, Stepper, Range, Input]);
+Framework7.use([Dialog, Popup, Popover, Toast, Panel, Stepper, Range, Searchbar, Swipeout, Input]);
 window.Framework7 = Framework7;

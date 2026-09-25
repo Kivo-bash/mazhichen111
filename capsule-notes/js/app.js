@@ -1,5 +1,5 @@
 /* 胶囊笔记：文档管理、编辑器、浏览视图、胶囊设置对话框、浮层与撤销/重做。
- * 版式参照 iOS 26 液态玻璃：大标题、文档胶囊条、底部悬浮的迷你条、标签栏和圆形按钮；
+ * 版式参照 iOS 26 液态玻璃：浮动侧边栏、大标题、底部悬浮的迷你条、标签栏和圆形按钮；
  * 气泡、对话框、弹窗、提示、步进器、滑块来自 Framework7。 */
 (() => {
   "use strict";
@@ -295,7 +295,7 @@
     $("#miniTitle").textContent = title;
     document.title = `${title} · 胶囊笔记`;
     paintArt(d);
-    renderChips();
+    renderDocList();
     if (state.mode === "edit") renderEditor(); else renderView();
     H();
     renderStatus();
@@ -308,15 +308,42 @@
     $("#status").textContent = `${n} 个胶囊 · ${saved}`;
   }
 
-  /* ================= 文档胶囊条 ================= */
-  function renderChips() {
-    const docs = [...state.docs].sort((a, b) => b.updated - a.updated);
-    $("#docChips").innerHTML = docs.map((d) => `<button class="chip glass${d.id === state.currentId ? " on" : ""}" type="button" data-id="${d.id}"${d.id === state.currentId ? ' aria-current="page"' : ""} title="长按或右键：重命名、删除">${esc(d.title || "未命名文档")}</button>`).join("")
-      + '<button class="chip glass add" type="button" id="newDoc"><i class="f7-icons">plus</i>新建</button>';
-    const on = $("#docChips .chip.on");
-    if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+  /* ================= 侧边栏（Framework7 浮动面板，宽屏常驻） ================= */
+  const WIDE = 960;
+  const isWide = () => innerWidth >= WIDE;
+  const panel = f7.panel.create({ el: "#sidebar", visibleBreakpoint: WIDE, swipe: true });
+  /* 面板停靠在左侧时，正文和底部悬浮区一起右移，靠左对齐 */
+  function syncSide() { app.dataset.side = panel.el.classList.contains("panel-in-breakpoint") ? "docked" : "float"; }
+  panel.on("breakpoint", syncSide);
+  addEventListener("resize", () => setTimeout(syncSide, 0));
+  syncSide();
+  $("#sidebarBtn").addEventListener("click", () => {
+    if (isWide()) { panel.toggleVisibleBreakpoint(); setTimeout(syncSide, 0); }
+    else if (panel.opened) panel.close(); else panel.open();
+  });
+  const narrowClose = () => { if (!isWide() && panel.opened) panel.close(); };
+
+  function renderDocList() {
+    const q = $("#search").value.trim().toLowerCase();
+    const docs = [...state.docs].sort((a, b) => b.updated - a.updated)
+      .filter((d) => !q || (d.title + "\n" + d.body.replace(TOKEN, (_, id) => d.capsules[id]?.name || "")).toLowerCase().includes(q));
+    $("#docCount").textContent = state.docs.length;
+    const canDelete = state.docs.length > 1;
+    $("#docList ul").innerHTML = docs.length ? docs.map((d) => `
+      <li class="${canDelete ? "swipeout " : ""}${d.id === state.currentId ? "on" : ""}" data-id="${d.id}">
+        ${canDelete ? '<div class="swipeout-content">' : ""}
+        <div class="item-content" role="button" tabindex="0"${d.id === state.currentId ? ' aria-current="page"' : ""}>
+          <div class="item-media"><i class="f7-icons">doc_text</i></div>
+          <div class="item-inner"><div class="item-title">${esc(d.title || "未命名文档")}
+            <div class="item-footer">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${Object.keys(d.capsules).length} 个胶囊</div></div></div>
+        </div>
+        ${canDelete ? `</div><div class="swipeout-actions-right"><a class="swipeout-delete" data-confirm="「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。" data-confirm-title="删除文档？">删除</a></div>` : ""}
+      </li>`).join("") : '<li class="empty">没有匹配的文档</li>';
   }
+  $("#search").addEventListener("input", renderDocList);
+  $("#searchForm .input-clear-button").addEventListener("click", () => { $("#search").value = ""; renderDocList(); });
   function openDoc(id) {
+    narrowClose();
     if (id === state.currentId) return;
     closeCurrent();
     commitHistory();
@@ -332,6 +359,8 @@
     const d = { id: uid("d_"), title: "未命名文档", updated: Date.now(), body: "# 未命名文档\n\n在这里写一句简介。\n\n", capsules: {}, values: {} };
     state.docs.push(d);
     state.currentId = d.id;
+    $("#search").value = "";
+    narrowClose();
     state.mode = "edit";
     syncModeUI();
     renderAll();
@@ -348,16 +377,17 @@
       renderAll();
     }, null, d.title);
   }
+  function removeDoc(id) {
+    state.docs = state.docs.filter((x) => x.id !== id);
+    hist.delete(id);
+    if (state.currentId === id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
+    persist();
+    renderAll();
+    toast("已删除");
+  }
   function deleteDoc(d) {
     if (state.docs.length < 2) { toast("至少要保留一篇文档"); return; }
-    f7.dialog.confirm(`「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。`, "删除文档？", () => {
-      state.docs = state.docs.filter((x) => x.id !== d.id);
-      hist.delete(d.id);
-      if (state.currentId === d.id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
-      persist();
-      renderAll();
-      toast("已删除");
-    });
+    f7.dialog.confirm(`「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。`, "删除文档？", () => removeDoc(d.id));
   }
   function docActions(d) {
     f7.dialog.create({
@@ -368,26 +398,27 @@
       destroyOnClose: true,
     }).open();
   }
-  const chipsEl = $("#docChips");
-  let pressTimer = 0, pressed = false;
-  chipsEl.addEventListener("click", (e) => {
-    if (pressed) { pressed = false; return; }
-    if (e.target.closest("#newDoc")) { newDoc(); return; }
-    const chip = e.target.closest(".chip[data-id]");
-    if (chip) openDoc(chip.dataset.id);
+  const docListEl = $("#docList");
+  docListEl.addEventListener("click", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li || e.target.closest(".swipeout-actions-right") || li.classList.contains("swipeout-opened")) return;
+    openDoc(li.dataset.id);
   });
-  chipsEl.addEventListener("contextmenu", (e) => {
-    const chip = e.target.closest(".chip[data-id]");
-    if (!chip) return;
+  docListEl.addEventListener("keydown", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (li && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDoc(li.dataset.id); }
+  });
+  docListEl.addEventListener("swipeout:deleted", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (li) removeDoc(li.dataset.id);
+  });
+  docListEl.addEventListener("contextmenu", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li) return;
     e.preventDefault();
-    docActions(state.docs.find((d) => d.id === chip.dataset.id));
+    docActions(state.docs.find((x) => x.id === li.dataset.id));
   });
-  chipsEl.addEventListener("pointerdown", (e) => {
-    const chip = e.target.closest(".chip[data-id]");
-    if (!chip || e.pointerType === "mouse") return;
-    pressTimer = setTimeout(() => { pressed = true; docActions(state.docs.find((d) => d.id === chip.dataset.id)); }, 520);
-  });
-  ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => chipsEl.addEventListener(ev, () => clearTimeout(pressTimer)));
+  $("#newDoc").addEventListener("click", newDoc);
   $("#titleBtn").addEventListener("click", () => renameDoc());
 
   /* 使用说明：Framework7 popup */
@@ -407,7 +438,7 @@
             <dt><span class="pill demo" data-kind="formula" data-color="rose"><span class="lb">公式</span><b class="v">19.0</b><span class="u">%</span></span></dt>
             <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到算式；底部「公式」标签会把算式直接写在胶囊里。</dd>
           </dl>
-          <p>在「编辑」里，把光标放在想要的位置，点右下角的 ＋ 插入胶囊；点已有胶囊会弹出设置，改动即时生效，按 Esc 或「取消」撤回。点大标题可以重命名；长按或右键文档标签可以重命名、删除。</p>
+          <p>在「编辑」里，把光标放在想要的位置，点右下角的 ＋ 插入胶囊；点已有胶囊会弹出设置，改动即时生效，按 Esc 或「取消」撤回。点大标题可以重命名；在左侧文档列表里向左滑动或右键可以重命名、删除。</p>
           <p class="keys"><kbd>⌘E</kbd> 切换编辑　<kbd>⌘Z</kbd> 撤销　<kbd>⇧⌘Z</kbd> 重做　<kbd>⌘B</kbd> <kbd>⌘I</kbd> 粗体、斜体</p>
         </div></div></div></div>`,
     }).open();

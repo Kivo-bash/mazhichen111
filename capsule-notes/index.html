@@ -21,15 +21,44 @@
 </svg>
 
 <div id="app" data-mode="view" data-tab="view">
+  <!-- ========== 侧边栏：Framework7 浮动面板 ========== -->
+  <div class="panel panel-left panel-floating" id="sidebar">
+    <div class="page">
+      <div class="navbar">
+        <div class="navbar-bg"></div>
+        <div class="navbar-inner">
+          <div class="title">胶囊笔记</div>
+          <div class="right">
+            <a class="link icon-only" id="newDoc" title="新建文档" aria-label="新建文档"><i class="f7-icons">square_pencil</i></a>
+          </div>
+        </div>
+      </div>
+      <div class="page-content">
+        <form class="searchbar searchbar-inline" id="searchForm" onsubmit="return false">
+          <div class="searchbar-inner">
+            <div class="searchbar-input-wrap">
+              <input type="search" id="search" placeholder="搜索" aria-label="搜索文档" autocomplete="off">
+              <i class="searchbar-icon"></i>
+              <span class="input-clear-button"></span>
+            </div>
+          </div>
+        </form>
+        <div class="block-title side-title">文档<span id="docCount"></span></div>
+        <div class="list list-strong-ios list-dividers-ios inset doc-list" id="docList"><ul></ul></div>
+        <div class="block-footer side-foot">向左滑动或右键文档可以重命名、删除。文档只保存在当前浏览器里。</div>
+      </div>
+    </div>
+  </div>
+
   <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
 
   <main class="screen" id="scroller">
     <div class="column">
       <div class="top-row">
+        <button class="round glass" id="sidebarBtn" type="button" aria-label="显示或隐藏文档列表" title="文档列表"><i class="f7-icons">sidebar_left</i></button>
         <button class="round glass" id="helpBtn" type="button" aria-label="使用说明" title="使用说明"><i class="f7-icons">question</i></button>
       </div>
       <h1 class="large-title"><button id="titleBtn" type="button" title="点按重命名"><span id="docTitle"></span></button></h1>
-      <nav class="chips" id="docChips" aria-label="文档"></nav>
 
       <article class="doc" id="view"></article>
       <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>

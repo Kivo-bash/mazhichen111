@@ -64,20 +64,41 @@ button { font: inherit; color: inherit; }
 
 /* ---------- 液态玻璃 ---------- */
 .glass { position: relative; isolation: isolate; border: 0;
-  background: rgba(255, 255, 255, .52);
-  -webkit-backdrop-filter: blur(16px) saturate(200%) brightness(1.06);
-  backdrop-filter: blur(16px) saturate(200%) brightness(1.06);
+  background: rgba(255, 255, 255, .22);
+  -webkit-backdrop-filter: blur(8px) saturate(210%) brightness(1.08);
+  backdrop-filter: blur(8px) saturate(210%) brightness(1.08);
   box-shadow: var(--glass-shadow); }
 /* 边缘的高光描边：左上和右下更亮，像玻璃的折射边 */
 .glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.3px; pointer-events: none; z-index: 3;
   background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, .15) 32%, rgba(255, 255, 255, 0) 55%, rgba(255, 255, 255, .15) 75%, rgba(255, 255, 255, .85));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
-html.lg-refract .glass { -webkit-backdrop-filter: url(#lg-refract) blur(7px) saturate(200%) brightness(1.06); backdrop-filter: url(#lg-refract) blur(7px) saturate(200%) brightness(1.06); }
+html.lg-refract .glass { background: rgba(255, 255, 255, .14); -webkit-backdrop-filter: url(#lg-refract) blur(2.5px) saturate(210%) brightness(1.08); backdrop-filter: url(#lg-refract) blur(2.5px) saturate(210%) brightness(1.08); }
+/* 玻璃上的文字加一点白色光晕，底下有字时也读得清 */
+.mini-text b, .mini-text span, .tab span { text-shadow: 0 0 6px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .9); }
+
+
+/* ---------- 侧边栏（Framework7 浮动面板） ---------- */
+.panel-left.panel-floating { --f7-glass-bg-color: rgba(255, 255, 255, .42); }
+.panel-left .page { background: transparent; }
+.panel-left .navbar .title { font-size: 17px; font-weight: 700; }
+.panel-left .searchbar { margin: 4px 0 2px; }
+.side-title { display: flex; justify-content: space-between; margin-top: 14px; }
+.side-title span { color: var(--faint); font-weight: 500; }
+.doc-list { margin-top: 6px; }
+.doc-list ul { background: rgba(255, 255, 255, .55); }
+.doc-list .item-content { cursor: pointer; }
+.doc-list .item-media .f7-icons { color: var(--accent); font-size: 24px; }
+.doc-list .item-title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-list .item-footer { font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.doc-list li.on > .swipeout-content > .item-content, .doc-list li.on > .item-content { background: rgba(255, 59, 48, .1); }
+.doc-list li.on .item-title { color: var(--accent); }
+.doc-list .empty { padding: 14px 16px; color: var(--muted); font-size: 13px; }
+.side-foot { font-size: 12px; line-height: 1.5; }
 
 /* ---------- 页面 ---------- */
 .screen { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .column { max-width: 760px; margin: 0 auto; padding: calc(env(safe-area-inset-top, 0px) + 18px) 22px 230px; }
-.top-row { display: flex; justify-content: flex-end; height: 44px; }
+.top-row { display: flex; justify-content: space-between; height: 44px; }
 .round { padding: 0; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ink-2); transition: transform .45s var(--spring); }
 .round .f7-icons { font-size: 21px; }
 .round:active { transform: scale(.9); }
@@ -282,3 +303,13 @@ kbd { font-family: inherit; font-size: 12px; padding: .1em .45em; border-radius:
   .pill, .chip, .tab, .tab-bubble, .fab, .round, .colors label { transition: none; }
   .pill.rolling { animation: none; }
 }
+
+/* 宽屏：面板停靠在左边，正文与底部悬浮区靠左对齐，紧挨着侧边栏 */
+:root { --side-w: 300px; }
+#app[data-side="docked"] .column { margin-left: var(--side-w); }
+@media (min-width: 960px) {
+  .column { margin-left: 0; margin-right: 0; max-width: 880px; padding-left: 56px; padding-right: 56px; }
+  .dock { align-items: flex-start; padding-left: 56px; padding-right: 56px; }
+}
+#app[data-side="docked"] .dock { left: var(--side-w); }
+#app[data-side="docked"] .mini, #app[data-side="docked"] .dock-row { width: min(640px, 100%); }

@@ -3,6 +3,9 @@
 @import "framework7/components/popup/css";
 @import "framework7/components/popover/css";
 @import "framework7/components/toast/css";
+@import "framework7/components/panel/css";
 @import "framework7/components/stepper/css";
 @import "framework7/components/range/css";
+@import "framework7/components/searchbar/css";
+@import "framework7/components/swipeout/css";
 @import "framework7/components/input/css";
