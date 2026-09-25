@@ -6,101 +6,67 @@
 <title>胶囊笔记</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
 <link rel="stylesheet" href="vendor/framework7.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="app" data-mode="view">
+<!-- 液态玻璃的折射滤镜（Chromium 内核浏览器里用于 backdrop-filter） -->
+<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <filter id="lg-refract" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.006 0.011" numOctaves="2" seed="11" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="2.5" result="soft"/>
+    <feDisplacementMap in="SourceGraphic" in2="soft" scale="34" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
 
-  <!-- ========== 侧边栏：Framework7 浮动面板 ========== -->
-  <div class="panel panel-left panel-floating" id="sidebar">
-    <div class="page">
-      <div class="navbar">
-        <div class="navbar-bg"></div>
-        <div class="navbar-inner">
-          <div class="title">胶囊笔记</div>
-          <div class="right">
-            <a class="link icon-only" id="newDoc" title="新建文档" aria-label="新建文档"><i class="f7-icons">square_pencil</i></a>
-          </div>
-        </div>
+<div id="app" data-mode="view" data-tab="view">
+  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <main class="screen" id="scroller">
+    <div class="column">
+      <div class="top-row">
+        <button class="round glass" id="helpBtn" type="button" aria-label="使用说明" title="使用说明"><i class="f7-icons">question</i></button>
       </div>
-      <div class="page-content">
-        <form class="searchbar searchbar-inline" id="searchForm" onsubmit="return false">
-          <div class="searchbar-inner">
-            <div class="searchbar-input-wrap">
-              <input type="search" id="search" placeholder="搜索" aria-label="搜索文档" autocomplete="off">
-              <i class="searchbar-icon"></i>
-              <span class="input-clear-button"></span>
-            </div>
-          </div>
-        </form>
-        <div class="block-title side-title">文档<span id="docCount"></span></div>
-        <div class="list list-strong-ios list-dividers-ios inset doc-list" id="docList"><ul></ul></div>
-        <div class="block-footer side-foot">向左滑动文档可以删除。文档只保存在当前浏览器里。</div>
+      <h1 class="large-title"><button id="titleBtn" type="button" title="点按重命名"><span id="docTitle"></span></button></h1>
+      <nav class="chips" id="docChips" aria-label="文档"></nav>
+
+      <article class="doc" id="view"></article>
+      <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>
+    </div>
+  </main>
+
+  <!-- 底部悬浮：迷你条 + 标签栏 + 圆形按钮 -->
+  <div class="dock">
+    <div class="mini glass" id="mini">
+      <div class="mini-art" id="miniArt" aria-hidden="true"></div>
+      <div class="mini-text view-only"><b id="miniTitle"></b><span id="status"></span></div>
+      <div class="fmt edit-only" id="formatbar" role="toolbar" aria-label="格式">
+        <button type="button" data-md="h2" title="标题"><i class="f7-icons">textformat_size</i></button>
+        <button type="button" data-md="bold" title="粗体（⌘B）"><i class="f7-icons">bold</i></button>
+        <button type="button" data-md="italic" title="斜体（⌘I）"><i class="f7-icons">italic</i></button>
+        <button type="button" data-md="strike" title="删除线"><i class="f7-icons">strikethrough</i></button>
+        <button type="button" data-md="ul" title="无序列表"><i class="f7-icons">list_bullet</i></button>
+        <button type="button" data-md="ol" title="有序列表"><i class="f7-icons">list_number</i></button>
+        <button type="button" data-md="task" title="任务列表"><i class="f7-icons">checkmark_square</i></button>
+        <button type="button" data-md="quote" title="引用"><i class="f7-icons">text_quote</i></button>
+        <button type="button" data-md="code" title="行内代码"><i class="f7-icons">chevron_left_slash_chevron_right</i></button>
+        <button type="button" data-md="link" title="链接"><i class="f7-icons">link</i></button>
+        <button type="button" data-md="table" title="插入表格"><i class="f7-icons">table</i></button>
+      </div>
+      <div class="mini-actions">
+        <button class="mini-btn" id="undo" type="button" aria-label="撤销" title="撤销（⌘Z）"><i class="f7-icons">arrow_uturn_left</i></button>
+        <button class="mini-btn" id="redo" type="button" aria-label="重做" title="重做（⇧⌘Z）"><i class="f7-icons">arrow_uturn_right</i></button>
       </div>
     </div>
-  </div>
-
-  <!-- ========== 主视图 ========== -->
-  <div class="view view-main">
-    <div class="page page-doc">
-      <div class="navbar">
-        <div class="navbar-bg"></div>
-        <div class="navbar-inner">
-          <div class="left">
-            <a class="link icon-only" id="sidebarBtn" title="显示或隐藏侧边栏" aria-label="显示或隐藏侧边栏"><i class="f7-icons">sidebar_left</i></a>
-          </div>
-          <div class="title">
-            <button class="title-btn" id="titleBtn" type="button" title="重命名"><span id="docTitle"></span></button>
-            <span class="subtitle" id="status"></span>
-          </div>
-          <div class="right">
-            <a class="link icon-only" id="undo" title="撤销（⌘Z）" aria-label="撤销"><i class="f7-icons">arrow_uturn_left</i></a>
-            <a class="link icon-only" id="redo" title="重做（⇧⌘Z）" aria-label="重做"><i class="f7-icons">arrow_uturn_right</i></a>
-          </div>
-        </div>
-      </div>
-
-      <div class="toolbar toolbar-bottom">
-        <div class="toolbar-inner">
-          <div class="left view-only">
-            <a class="link icon-only" id="rerollAll" title="全部重新随机" aria-label="全部重新随机"><i class="f7-icons">shuffle</i></a>
-            <a class="link icon-only fx-toggle" id="showFx" title="在胶囊里显示公式" aria-label="显示公式" aria-pressed="false"><i class="f7-icons">function</i></a>
-          </div>
-          <div class="left edit-only fmt" id="formatbar" role="toolbar" aria-label="格式">
-            <a class="link icon-only" data-md="h2" title="标题"><i class="f7-icons">textformat_size</i></a>
-            <a class="link icon-only" data-md="bold" title="粗体（⌘B）"><i class="f7-icons">bold</i></a>
-            <a class="link icon-only" data-md="italic" title="斜体（⌘I）"><i class="f7-icons">italic</i></a>
-            <a class="link icon-only" data-md="strike" title="删除线"><i class="f7-icons">strikethrough</i></a>
-            <a class="link icon-only" data-md="ul" title="无序列表"><i class="f7-icons">list_bullet</i></a>
-            <a class="link icon-only" data-md="ol" title="有序列表"><i class="f7-icons">list_number</i></a>
-            <a class="link icon-only" data-md="task" title="任务列表"><i class="f7-icons">checkmark_square</i></a>
-            <a class="link icon-only" data-md="quote" title="引用"><i class="f7-icons">text_quote</i></a>
-            <a class="link icon-only" data-md="code" title="行内代码"><i class="f7-icons">chevron_left_slash_chevron_right</i></a>
-            <a class="link icon-only" data-md="link" title="链接"><i class="f7-icons">link</i></a>
-            <a class="link icon-only" data-md="table" title="插入表格"><i class="f7-icons">table</i></a>
-          </div>
-          <div class="segmented segmented-strong mode-seg" role="group" aria-label="模式">
-            <button class="button" type="button" data-set-mode="edit">编辑</button>
-            <button class="button" type="button" data-set-mode="view">浏览</button>
-            <span class="segmented-highlight"></span>
-          </div>
-          <div class="right edit-only">
-            <a class="link insert-link" id="insertCap" title="在光标处插入胶囊"><i class="f7-icons">capsule</i><span>插入胶囊</span></a>
-          </div>
-          <div class="right view-only">
-            <a class="link icon-only" id="helpBtn" title="使用说明" aria-label="使用说明"><i class="f7-icons">question_circle</i></a>
-          </div>
-        </div>
-      </div>
-
-      <div class="page-content" id="scroller">
-        <article class="paper">
-          <div class="doc" id="view"></div>
-          <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>
-        </article>
-      </div>
+    <div class="dock-row">
+      <nav class="tabbar glass" role="tablist" aria-label="模式">
+        <span class="tab-bubble" aria-hidden="true"></span>
+        <button class="tab" type="button" role="tab" data-tab="view"><i class="f7-icons">book</i><span>浏览</span></button>
+        <button class="tab" type="button" role="tab" data-tab="formula"><i class="f7-icons">function</i><span>公式</span></button>
+        <button class="tab" type="button" role="tab" data-tab="edit"><i class="f7-icons">pencil</i><span>编辑</span></button>
+      </nav>
+      <button class="fab glass" id="fab" type="button"><i class="f7-icons" id="fabIcon">shuffle</i></button>
     </div>
   </div>
 </div>

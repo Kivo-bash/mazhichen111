@@ -1,5 +1,6 @@
 /* 胶囊笔记：文档管理、编辑器、浏览视图、胶囊设置对话框、浮层与撤销/重做。
- * 界面组件来自 Framework7（iOS 主题）：侧边面板、导航栏、工具栏、气泡、对话框、步进器、滑块、提示。 */
+ * 版式参照 iOS 26 液态玻璃：大标题、文档胶囊条、底部悬浮的迷你条、标签栏和圆形按钮；
+ * 气泡、对话框、弹窗、提示、步进器、滑块来自 Framework7。 */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -228,25 +229,32 @@
   }
   const missingInner = '<span class="lb">已删除</span><b class="v">?</b>';
 
-  /* ================= Framework7 应用 ================= */
+  /* ================= Framework7（气泡、对话框、弹窗、提示、步进器、滑块） ================= */
   const f7 = new Framework7({
     el: "#app",
     theme: "ios",
     darkMode: false,
-    colors: { primary: "#007aff" },
+    colors: { primary: "#ff3b30" },
     popover: { backdrop: false, closeByOutsideClick: true, closeOnEscape: false },
     toast: { closeTimeout: 1300, position: "center" },
     dialog: { buttonOk: "好", buttonCancel: "取消" },
   });
-  const WIDE = 960;
-  const panel = f7.panel.create({ el: "#sidebar", visibleBreakpoint: WIDE, swipe: true });
   const toast = (text) => f7.toast.create({ text, destroyOnClose: true }).open();
+  /* 折射效果只在支持 SVG backdrop-filter 的 Chromium 内核里开启，其它浏览器保留普通磨砂 */
+  if (navigator.userAgentData?.brands?.some((b) => /Chromium/.test(b.brand)) && !reduceMotion) document.documentElement.classList.add("lg-refract");
 
-  /* ================= 模式与整体渲染 ================= */
+  /* ================= 模式、标签栏与整体渲染 ================= */
   const app = $("#app"), view = $("#view"), ed = $("#editor");
+  const currentTab = () => (state.mode === "edit" ? "edit" : state.showFx ? "formula" : "view");
   function syncModeUI() {
     app.dataset.mode = state.mode;
-    $$("[data-set-mode]").forEach((b) => b.classList.toggle("button-active", b.dataset.setMode === state.mode));
+    app.dataset.tab = currentTab();
+    $$(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === currentTab())));
+    const fab = $("#fab");
+    $("#fabIcon").textContent = state.mode === "edit" ? "plus" : "shuffle";
+    fab.setAttribute("aria-label", state.mode === "edit" ? "在光标处插入胶囊" : "全部重新随机");
+    fab.title = fab.getAttribute("aria-label");
+    view.classList.toggle("show-fx", !!state.showFx);
   }
   function setMode(m) {
     closeCurrent();
@@ -258,17 +266,36 @@
     H().last = snap(cur());
     persist();
   }
-  $$("[data-set-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.setMode)));
+  function setTab(t) {
+    if (t === "edit") { if (state.mode !== "edit") setMode("edit"); return; }
+    state.showFx = t === "formula";
+    if (state.mode !== "view") setMode("view");
+    else { syncModeUI(); persist(); }
+  }
+  $$(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
   function prune(d) {
     const used = new Set([...d.body.matchAll(TOKEN)].map((m) => m[1]));
     Object.keys(d.capsules).forEach((id) => { if (!used.has(id)) { delete d.capsules[id]; delete d.values[id]; } });
   }
+  /* 迷你条左侧的"封面"：按文档生成一块渐变色，写上标题的第一个字 */
+  const ARTS = [["#ff6a5f", "#ff2d62"], ["#ffb340", "#ff6a3d"], ["#5ac8fa", "#007aff"], ["#34c759", "#00a99c"], ["#bf5af2", "#5856d6"], ["#ff9f0a", "#ff375f"]];
+  function paintArt(d) {
+    let h = 0;
+    for (const ch of d.id) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    const [a, b] = ARTS[h % ARTS.length];
+    const art = $("#miniArt");
+    art.style.setProperty("--art", `linear-gradient(135deg, ${a}, ${b})`);
+    art.textContent = [...(d.title || "未")][0];
+  }
   function renderAll() {
     const d = cur();
-    $("#docTitle").textContent = d.title || "未命名文档";
-    document.title = `${d.title || "未命名文档"} · 胶囊笔记`;
-    renderDocList();
+    const title = d.title || "未命名文档";
+    $("#docTitle").textContent = title;
+    $("#miniTitle").textContent = title;
+    document.title = `${title} · 胶囊笔记`;
+    paintArt(d);
+    renderChips();
     if (state.mode === "edit") renderEditor(); else renderView();
     H();
     renderStatus();
@@ -281,41 +308,15 @@
     $("#status").textContent = `${n} 个胶囊 · ${saved}`;
   }
 
-  /* ================= 侧边栏 ================= */
-  const isWide = () => innerWidth >= WIDE;
-  $("#sidebarBtn").addEventListener("click", () => {
-    if (isWide()) panel.toggleVisibleBreakpoint();
-    else if (panel.opened) panel.close(); else panel.open();
-  });
-  function renderDocList() {
-    const q = $("#search").value.trim().toLowerCase();
-    const docs = [...state.docs].sort((a, b) => b.updated - a.updated)
-      .filter((d) => !q || (d.title + "\n" + d.body.replace(TOKEN, (_, id) => d.capsules[id]?.name || "")).toLowerCase().includes(q));
-    $("#docCount").textContent = state.docs.length;
-    const canDelete = state.docs.length > 1;
-    $("#docList ul").innerHTML = docs.length ? docs.map((d) => `
-      <li class="${canDelete ? "swipeout " : ""}${d.id === state.currentId ? "on" : ""}" data-id="${d.id}">
-        ${canDelete ? '<div class="swipeout-content">' : ""}
-        <div class="item-content" role="button" tabindex="0"${d.id === state.currentId ? ' aria-current="page"' : ""}>
-          <div class="item-media"><i class="f7-icons">doc_text</i></div>
-          <div class="item-inner"><div class="item-title">${esc(d.title || "未命名文档")}
-            <div class="item-footer">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${Object.keys(d.capsules).length} 个胶囊</div></div></div>
-        </div>
-        ${canDelete ? `</div><div class="swipeout-actions-right"><a class="swipeout-delete" data-confirm="「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。" data-confirm-title="删除文档？">删除</a></div>` : ""}
-      </li>`).join("") : '<li class="empty">没有匹配的文档</li>';
-  }
-  $("#search").addEventListener("input", renderDocList);
-  $("#searchForm .input-clear-button").addEventListener("click", () => { $("#search").value = ""; renderDocList(); });
-  function deleteDoc(id) {
-    state.docs = state.docs.filter((d) => d.id !== id);
-    hist.delete(id);
-    if (state.currentId === id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
-    persist();
-    renderAll();
-    toast("已删除文档");
+  /* ================= 文档胶囊条 ================= */
+  function renderChips() {
+    const docs = [...state.docs].sort((a, b) => b.updated - a.updated);
+    $("#docChips").innerHTML = docs.map((d) => `<button class="chip glass${d.id === state.currentId ? " on" : ""}" type="button" data-id="${d.id}"${d.id === state.currentId ? ' aria-current="page"' : ""} title="长按或右键：重命名、删除">${esc(d.title || "未命名文档")}</button>`).join("")
+      + '<button class="chip glass add" type="button" id="newDoc"><i class="f7-icons">plus</i>新建</button>';
+    const on = $("#docChips .chip.on");
+    if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   function openDoc(id) {
-    if (narrowClose()) { /* 窄屏上选中后收起侧边栏 */ }
     if (id === state.currentId) return;
     closeCurrent();
     commitHistory();
@@ -325,54 +326,69 @@
     renderAll();
     $("#scroller").scrollTop = 0;
   }
-  const narrowClose = () => { if (!isWide() && panel.opened) { panel.close(); return true; } return false; };
-  const docListEl = $("#docList");
-  docListEl.addEventListener("click", (e) => {
-    const li = e.target.closest("li[data-id]");
-    if (!li || e.target.closest(".swipeout-actions-right")) return;
-    if (li.classList.contains("swipeout-opened")) return;
-    openDoc(li.dataset.id);
-  });
-  docListEl.addEventListener("keydown", (e) => {
-    const li = e.target.closest("li[data-id]");
-    if (li && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDoc(li.dataset.id); }
-  });
-  docListEl.addEventListener("swipeout:deleted", (e) => {
-    const li = e.target.closest("li[data-id]");
-    if (li) deleteDoc(li.dataset.id);
-  });
-  docListEl.addEventListener("contextmenu", (e) => {
-    const li = e.target.closest("li[data-id]");
-    if (!li || state.docs.length < 2) return;
-    e.preventDefault();
-    const d = state.docs.find((x) => x.id === li.dataset.id);
-    f7.dialog.confirm(`「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。`, "删除文档？", () => deleteDoc(d.id));
-  });
-  $("#newDoc").addEventListener("click", () => {
+  function newDoc() {
     closeCurrent();
     commitHistory();
     const d = { id: uid("d_"), title: "未命名文档", updated: Date.now(), body: "# 未命名文档\n\n在这里写一句简介。\n\n", capsules: {}, values: {} };
     state.docs.push(d);
     state.currentId = d.id;
-    $("#search").value = "";
-    narrowClose();
     state.mode = "edit";
     syncModeUI();
     renderAll();
     persist();
     renameDoc();
-  });
-  function renameDoc() {
-    const d = cur();
+  }
+  function renameDoc(d = cur()) {
     f7.dialog.prompt("", "给文档起个名字", (v) => {
       v = String(v).trim();
       if (!v || v === d.title) return;
       d.title = v;
-      touch();
+      d.updated = Date.now();
+      if (d === cur()) touch(); else persist();
       renderAll();
     }, null, d.title);
   }
-  $("#titleBtn").addEventListener("click", renameDoc);
+  function deleteDoc(d) {
+    if (state.docs.length < 2) { toast("至少要保留一篇文档"); return; }
+    f7.dialog.confirm(`「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。`, "删除文档？", () => {
+      state.docs = state.docs.filter((x) => x.id !== d.id);
+      hist.delete(d.id);
+      if (state.currentId === d.id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
+      persist();
+      renderAll();
+      toast("已删除");
+    });
+  }
+  function docActions(d) {
+    f7.dialog.create({
+      title: esc(d.title || "未命名文档"),
+      verticalButtons: true,
+      buttons: [{ text: "重命名" }, { text: "删除文档", color: "red" }, { text: "取消", bold: true }],
+      onClick(dialog, i) { if (i === 0) renameDoc(d); else if (i === 1) deleteDoc(d); },
+      destroyOnClose: true,
+    }).open();
+  }
+  const chipsEl = $("#docChips");
+  let pressTimer = 0, pressed = false;
+  chipsEl.addEventListener("click", (e) => {
+    if (pressed) { pressed = false; return; }
+    if (e.target.closest("#newDoc")) { newDoc(); return; }
+    const chip = e.target.closest(".chip[data-id]");
+    if (chip) openDoc(chip.dataset.id);
+  });
+  chipsEl.addEventListener("contextmenu", (e) => {
+    const chip = e.target.closest(".chip[data-id]");
+    if (!chip) return;
+    e.preventDefault();
+    docActions(state.docs.find((d) => d.id === chip.dataset.id));
+  });
+  chipsEl.addEventListener("pointerdown", (e) => {
+    const chip = e.target.closest(".chip[data-id]");
+    if (!chip || e.pointerType === "mouse") return;
+    pressTimer = setTimeout(() => { pressed = true; docActions(state.docs.find((d) => d.id === chip.dataset.id)); }, 520);
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => chipsEl.addEventListener(ev, () => clearTimeout(pressTimer)));
+  $("#titleBtn").addEventListener("click", () => renameDoc());
 
   /* 使用说明：Framework7 popup */
   $("#helpBtn").addEventListener("click", () => {
@@ -385,14 +401,14 @@
           <p>文档用 Markdown 书写，文中的<b>胶囊</b>是会变化的数字。</p>
           <dl>
             <dt><span class="pill demo" data-kind="random" data-color="violet"><span class="lb">随机</span><b class="v">7</b></span></dt>
-            <dd>在区间内随机取数。点一下重新抽取；底部的 <i class="f7-icons" style="font-size:16px">shuffle</i> 会让全部随机胶囊一起重抽。</dd>
+            <dd>在区间内随机取数。点一下重新抽取；右下角的圆形按钮会让全部随机胶囊一起重抽。</dd>
             <dt><span class="pill demo" data-kind="input" data-color="sky"><span class="lb">填写</span><b class="v">36.0</b><span class="u">g</span></span></dt>
             <dd>由读者自己填。点开后输入数字或拖动滑块，超出区间会自动调整到边界。</dd>
             <dt><span class="pill demo" data-kind="formula" data-color="rose"><span class="lb">公式</span><b class="v">19.0</b><span class="u">%</span></span></dt>
-            <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到代入后的算式。</dd>
+            <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到算式；底部「公式」标签会把算式直接写在胶囊里。</dd>
           </dl>
-          <p>切到「编辑」后，把光标放在想要的位置点「插入胶囊」；点击已有胶囊会弹出设置气泡，改动即时生效，按 Esc 或「取消」撤回。点顶部的标题可以重命名文档；在侧边栏向左滑动或右键可以删除文档。</p>
-          <p class="keys"><kbd>⌘E</kbd> 切换模式　<kbd>⌘Z</kbd> 撤销　<kbd>⇧⌘Z</kbd> 重做　<kbd>⌘B</kbd> <kbd>⌘I</kbd> 粗体、斜体</p>
+          <p>在「编辑」里，把光标放在想要的位置，点右下角的 ＋ 插入胶囊；点已有胶囊会弹出设置，改动即时生效，按 Esc 或「取消」撤回。点大标题可以重命名；长按或右键文档标签可以重命名、删除。</p>
+          <p class="keys"><kbd>⌘E</kbd> 切换编辑　<kbd>⌘Z</kbd> 撤销　<kbd>⇧⌘Z</kbd> 重做　<kbd>⌘B</kbd> <kbd>⌘I</kbd> 粗体、斜体</p>
         </div></div></div></div>`,
     }).open();
   });
@@ -444,7 +460,7 @@
     view.innerHTML = html.trim() ? html : '<p class="empty">这篇文档还是空的，切换到「编辑」开始写吧。</p>';
     view.classList.toggle("show-fx", !!state.showFx);
     const hasRandom = capsOf(d).some((c) => kindKey(c) === "random" && d.body.includes(tok(c.id)));
-    $("#rerollAll").classList.toggle("disabled", !hasRandom);
+    $("#fab").classList.toggle("disabled", state.mode === "view" && !hasRandom);
   }
   function syncPill(el, fresh) {
     const open = el.classList.contains("open");
@@ -488,21 +504,14 @@
     } else if (k === "input") openInputPop(el, c);
     else openFormulaPop(el, c);
   });
-  $("#rerollAll").addEventListener("click", () => {
+  $("#fab").addEventListener("click", () => {
+    if (state.mode !== "view") return;
     const d = cur();
     capsOf(d).forEach((c) => { if (kindKey(c) === "random") d.values[c.id] = randomIn(c); });
     touch();
     const els = $$('.pill[data-kind="random"]', view);
     if (!els.length || reduceMotion) { refreshPills(); return; }
     els.forEach((el) => roll(el, d.capsules[el.dataset.id]));
-  });
-  const fxBtn = $("#showFx");
-  fxBtn.setAttribute("aria-pressed", String(!!state.showFx));
-  fxBtn.addEventListener("click", () => {
-    state.showFx = !state.showFx;
-    fxBtn.setAttribute("aria-pressed", String(state.showFx));
-    view.classList.toggle("show-fx", state.showFx);
-    persist();
   });
   $("#undo").addEventListener("click", () => { undo(); toast("已撤销"); });
   $("#redo").addEventListener("click", () => { redo(); toast("已重做"); });
@@ -793,7 +802,7 @@
         ${row("颜色", `<div class="colors" role="radiogroup" aria-label="颜色">${COLORS.map(([k, label]) => `<label data-color="${k}" title="${label}"><input type="radio" name="color" value="${k}"${c.color === k ? " checked" : ""} aria-label="${label}"></label>`).join("")}</div>`)}
       </ul></div>
       <div class="gF">
-        ${others.length ? `<div class="chips" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-kind="${kindKey(o)}" data-color="${o.color}" data-ins="${esc(o.name)}"><span class="lb">${esc(o.name)}</span></button>`).join("")}</div>` : ""}
+        ${others.length ? `<div class="chips-mini" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-kind="${kindKey(o)}" data-color="${o.color}" data-ins="${esc(o.name)}"><span class="lb">${esc(o.name)}</span></button>`).join("")}</div>` : ""}
         <p class="hint">支持 + − × ÷ ^ % 和括号；round(x, 位数)、min、max、sum、avg、abs、sqrt、if(条件, 是, 否)</p>
       </div>
       <div class="preview" id="preview" aria-live="polite"></div>
@@ -931,8 +940,8 @@
   }
 
   /* 插入胶囊：先放进正文作为气泡的锚点；取消会整个撤回 */
-  $("#insertCap").addEventListener("mousedown", (e) => e.preventDefault());
-  $("#insertCap").addEventListener("click", () => {
+  $("#fab").addEventListener("mousedown", (e) => { if (state.mode === "edit") e.preventDefault(); });
+  $("#fab").addEventListener("click", () => {
     if (state.mode !== "edit") return;
     closeCurrent();
     const d = cur(), before = snap(d);
