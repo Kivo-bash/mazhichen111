@@ -6,116 +6,139 @@
 <title>胶囊笔记</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400&family=JetBrains+Mono:wght@500;700&display=swap">
-<link rel="stylesheet" href="vendor/shoelace-dark.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<script>document.documentElement.classList.add("sl-theme-dark");</script>
+<canvas class="wallpaper" id="wallpaper" aria-hidden="true"></canvas>
+<div class="wall-veil" aria-hidden="true"></div>
 
-<canvas class="backdrop" id="backdrop" aria-hidden="true"></canvas>
-<div class="veil" aria-hidden="true"></div>
+<div class="window" id="app" data-mode="view">
+  <!-- ========== 侧边栏 ========== -->
+  <aside class="sidebar" id="sidebar" aria-label="文档">
+    <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search" type="search" placeholder="搜索" aria-label="搜索文档" autocomplete="off">
+    </label>
+    <div class="side-head"><span>文档</span><span id="docCount"></span></div>
+    <nav class="doc-list" id="docList"></nav>
+    <button class="side-new" id="newDoc" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>新建文档
+    </button>
+  </aside>
+  <div class="scrim" id="scrim"></div>
 
-<div class="app" id="app" data-mode="view">
-  <header class="topbar">
-    <div class="tb-left">
-      <sl-tooltip content="我的文档" placement="bottom">
-        <button class="icon-btn" id="docsBtn" type="button" aria-label="打开文档列表">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+  <!-- ========== 主区域 ========== -->
+  <section class="main">
+    <header class="toolbar">
+      <div class="tb-group">
+        <button class="tb-btn" id="sidebarBtn" type="button" title="显示或隐藏侧边栏" aria-label="显示或隐藏侧边栏" aria-expanded="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3.5"/><path d="M9.5 4v16"/></svg>
         </button>
-      </sl-tooltip>
-      <input class="title-input" id="title" aria-label="文档标题" maxlength="80">
-    </div>
-    <div class="tb-right">
-      <div class="seg" role="group" aria-label="模式">
+      </div>
+      <div class="tb-title">
+        <input id="title" aria-label="文档标题" maxlength="80">
+        <span id="status"></span>
+      </div>
+      <div class="segmented" role="group" aria-label="模式">
         <button type="button" data-set-mode="edit" aria-pressed="false">编辑</button>
         <button type="button" data-set-mode="view" aria-pressed="true">浏览</button>
       </div>
-      <span class="vsep" aria-hidden="true"></span>
-      <sl-tooltip content="撤销（Ctrl+Z）" placement="bottom">
-        <button class="icon-btn" id="undo" type="button" aria-label="撤销">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-        </button>
-      </sl-tooltip>
-      <sl-tooltip content="重做（Ctrl+Shift+Z）" placement="bottom">
-        <button class="icon-btn" id="redo" type="button" aria-label="重做">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
-        </button>
-      </sl-tooltip>
-      <span class="vsep" aria-hidden="true"></span>
-      <sl-tooltip content="全部重新随机" placement="bottom" class="view-only">
-        <button class="icon-btn" id="rerollAll" type="button" aria-label="全部重新随机">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" class="fill"/><circle cx="12" cy="12" r="1.2" class="fill"/><circle cx="15.5" cy="15.5" r="1.2" class="fill"/></svg>
-        </button>
-      </sl-tooltip>
-      <sl-tooltip content="在胶囊里显示公式" placement="bottom" class="view-only">
-        <button class="icon-btn fx-btn" id="showFx" type="button" aria-label="显示公式" aria-pressed="false"><span aria-hidden="true">ƒ</span></button>
-      </sl-tooltip>
-      <sl-tooltip content="使用说明" placement="bottom">
-        <button class="icon-btn" id="helpBtn" type="button" aria-label="使用说明">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.6-2.8 2.6"/><path d="M12 16.8h.01"/></svg>
-        </button>
-      </sl-tooltip>
-    </div>
-  </header>
+      <div class="tb-right">
+        <div class="tb-group">
+          <button class="tb-btn" id="undo" type="button" title="撤销（⌘Z）" aria-label="撤销">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+          </button>
+          <button class="tb-btn" id="redo" type="button" title="重做（⇧⌘Z）" aria-label="重做">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+          </button>
+        </div>
+        <div class="tb-group view-only">
+          <button class="tb-btn" id="rerollAll" type="button" title="全部重新随机" aria-label="全部重新随机">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><circle cx="8.5" cy="8.5" r="1.25" class="fill"/><circle cx="12" cy="12" r="1.25" class="fill"/><circle cx="15.5" cy="15.5" r="1.25" class="fill"/></svg>
+          </button>
+          <button class="tb-btn fx" id="showFx" type="button" title="在胶囊里显示公式" aria-label="显示公式" aria-pressed="false"><span aria-hidden="true">ƒ</span></button>
+        </div>
+        <div class="tb-group edit-only">
+          <button class="tb-btn tb-accent" id="insertCap" type="button" title="在光标处插入胶囊">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="7.5" width="19" height="9" rx="4.5"/><path d="M12 10v4M10 12h4"/></svg><span>胶囊</span>
+          </button>
+        </div>
+        <div class="tb-group">
+          <button class="tb-btn" id="helpBtn" type="button" title="使用说明" aria-label="使用说明">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.6-2.8 2.6"/><path d="M12 16.8h.01"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
 
-  <main class="stage">
-    <div class="toolbar" id="toolbar" role="toolbar" aria-label="编辑工具">
-      <button type="button" class="tool" data-md="bold" title="粗体（Ctrl+B）"><b>B</b></button>
-      <button type="button" class="tool" data-md="italic" title="斜体（Ctrl+I）"><i>I</i></button>
-      <button type="button" class="tool" data-md="strike" title="删除线"><s>S</s></button>
-      <button type="button" class="tool" data-md="code" title="行内代码">&lt;/&gt;</button>
-      <span class="tsep" aria-hidden="true"></span>
-      <button type="button" class="tool" data-md="h2" title="标题">H</button>
-      <button type="button" class="tool" data-md="ul" title="无序列表">•</button>
-      <button type="button" class="tool" data-md="ol" title="有序列表">1.</button>
-      <button type="button" class="tool" data-md="task" title="任务列表">☐</button>
-      <button type="button" class="tool" data-md="quote" title="引用">❝</button>
-      <span class="tsep" aria-hidden="true"></span>
-      <button type="button" class="tool" data-md="link" title="链接">链接</button>
-      <button type="button" class="tool" data-md="table" title="插入表格">表格</button>
-      <button type="button" class="tool" data-md="hr" title="分割线">—</button>
-      <span class="tsep" aria-hidden="true"></span>
-      <button type="button" class="insert-btn" id="insertCap" title="在光标处插入胶囊"><span class="mini-pill" aria-hidden="true"></span>插入胶囊</button>
-    </div>
+    <div class="scroller" id="scroller">
+      <div class="formatbar edit-only" id="formatbar" role="toolbar" aria-label="格式">
+        <button type="button" data-md="h2" title="标题">标题</button>
+        <span class="fsep"></span>
+        <button type="button" data-md="bold" title="粗体（⌘B）"><b>B</b></button>
+        <button type="button" data-md="italic" title="斜体（⌘I）"><i>I</i></button>
+        <button type="button" data-md="strike" title="删除线"><s>S</s></button>
+        <button type="button" data-md="code" title="行内代码"><code>{}</code></button>
+        <span class="fsep"></span>
+        <button type="button" data-md="ul" title="无序列表">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" class="fill"/><circle cx="4.5" cy="12" r="1" class="fill"/><circle cx="4.5" cy="18" r="1" class="fill"/></svg>
+        </button>
+        <button type="button" data-md="ol" title="有序列表">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+        </button>
+        <button type="button" data-md="task" title="任务列表">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="6" height="6" rx="1.5"/><path d="m3.5 17 2 2 3.5-4M13 8h8M13 17h8"/></svg>
+        </button>
+        <button type="button" data-md="quote" title="引用">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M10 8h9M10 12h9M10 16h6"/></svg>
+        </button>
+        <span class="fsep"></span>
+        <button type="button" data-md="link" title="链接">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+        </button>
+        <button type="button" data-md="table" title="插入表格">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M3 15h18M10 4v16"/></svg>
+        </button>
+        <button type="button" data-md="hr" title="分割线">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/></svg>
+        </button>
+      </div>
 
-    <article class="card">
-      <div class="doc" id="view"></div>
-      <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>
-    </article>
-    <footer class="status" id="status"></footer>
-  </main>
+      <article class="page">
+        <div class="doc" id="view"></div>
+        <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>
+      </article>
+    </div>
+  </section>
 </div>
 
-<sl-drawer id="docsDrawer" label="我的文档" placement="start" class="glass-drawer">
-  <nav class="doc-list" id="docList" aria-label="文档列表"></nav>
-  <div slot="footer" class="drawer-foot">
-    <sl-button variant="primary" id="newDoc">新建文档</sl-button>
-    <p>文档只保存在当前浏览器里。</p>
-  </div>
-</sl-drawer>
+<!-- 气泡弹窗（Floating UI 定位） -->
+<div class="popover" id="popover" role="dialog" hidden>
+  <div class="po-arrow" id="poArrow"></div>
+  <div class="po-body" id="poBody"></div>
+</div>
 
-<sl-dialog id="capDlg" label="编辑胶囊" class="glass-dialog"></sl-dialog>
+<!-- 使用说明：从窗口顶部滑下的 sheet -->
+<dialog class="sheet" id="helpSheet" aria-labelledby="helpTitle">
+  <h2 id="helpTitle">使用说明</h2>
+  <p>文档用 Markdown 书写，文中的<b>胶囊</b>是会变化的数字。</p>
+  <dl>
+    <dt><span class="pill demo" data-kind="random" data-color="violet"><span class="lb">随机</span><b class="v">7</b></span></dt>
+    <dd>在区间内随机取数。浏览时点一下重新抽取；工具栏上的骰子会让全部随机胶囊一起重抽。</dd>
+    <dt><span class="pill demo" data-kind="input" data-color="sky"><span class="lb">填写</span><b class="v">36.0</b><span class="u">g</span></span></dt>
+    <dd>由读者自己填。浏览时点开，输入数字、用步进按钮或拖动滑块，超出区间会自动调整到边界。</dd>
+    <dt><span class="pill demo" data-kind="formula" data-color="rose"><span class="lb">公式</span><b class="v">19.0</b><span class="u">%</span></span></dt>
+    <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到代入后的算式。</dd>
+  </dl>
+  <p>切到「编辑」后，把光标放在想要的位置点工具栏上的「胶囊」；点击已有胶囊会弹出设置气泡，改动即时生效，按 Esc 或「取消」可以撤回这次修改。</p>
+  <p class="keys"><kbd>⌘E</kbd> 切换模式　<kbd>⌘Z</kbd> 撤销　<kbd>⇧⌘Z</kbd> 重做　<kbd>⌘B</kbd> <kbd>⌘I</kbd> 粗体、斜体</p>
+  <div class="sheet-foot"><button class="btn btn-primary" id="helpClose" type="button">好</button></div>
+</dialog>
 
-<sl-dialog id="helpDlg" label="使用说明" class="glass-dialog">
-  <div class="help">
-    <p>文档用 Markdown 书写，文中的<b>胶囊</b>是会变化的数字。</p>
-    <dl>
-      <dt><span class="pill demo" data-color="amber"><span class="lb">随机</span><b class="v">7</b></span></dt>
-      <dd>在区间内随机取数。浏览时点一下重新抽取，右上角的骰子会让全部随机胶囊一起重抽。</dd>
-      <dt><span class="pill demo" data-color="sky"><span class="lb">填写</span><b class="v">36.0</b><span class="u">g</span></span></dt>
-      <dd>由读者自己填。浏览时点开输入数字或拖动滑块，超出区间会自动调整到边界。</dd>
-      <dt><span class="pill demo" data-kind="formula" data-color="rose"><span class="lb">公式</span><b class="v">19.0</b><span class="u">%</span></span></dt>
-      <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到代入后的算式。</dd>
-    </dl>
-    <p>切到「编辑」后，把光标放在想要的位置点「插入胶囊」；点击已有胶囊可以修改名称、区间、公式、单位和颜色。</p>
-    <p class="keys"><kbd>Ctrl/⌘ E</kbd> 切换模式　<kbd>Ctrl/⌘ Z</kbd> 撤销　<kbd>Ctrl/⌘ ⇧ Z</kbd> 重做</p>
-  </div>
-</sl-dialog>
-
-<div class="pop" id="pop" role="dialog" hidden></div>
-
-<script src="vendor/shoelace.js"></script>
+<script src="vendor/floating-ui.core.umd.min.js"></script>
+<script src="vendor/floating-ui.dom.umd.min.js"></script>
 <script src="js/markdown.js"></script>
 <script src="js/expr.js"></script>
 <script src="js/app.js"></script>
