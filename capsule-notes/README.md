@@ -23,7 +23,7 @@
 
 ## 界面
 
-参照 iOS 26 的液态玻璃：玻璃几乎完全透明，脚本按每块玻璃的尺寸生成一张透镜位移图（中心为零、越靠边缘越大），通过 SVG `feDisplacementMap` 作为 `backdrop-filter`，让背后的内容只在边缘被折弯；再叠加亮边和一点内发光。Chromium 内核浏览器里有折射，其它浏览器退回轻度磨砂。
+参照 iOS 26 的液态玻璃：玻璃几乎完全透明，脚本按每块玻璃的尺寸生成一张透镜位移图（中心为零、越靠边缘越大），通过 SVG `feDisplacementMap` 作为 `backdrop-filter`，让背后的内容在边缘被折弯；玻璃本身按 iOS 26 的做法是约 15% 不透明的白加模糊（10–12px）和提高饱和度，再叠加亮边和一点内发光。Chromium 内核浏览器里有折射，其它浏览器只有 15% 白加模糊，没有边缘折射。
 
 气泡、对话框、弹窗、提示、步进器、滑块和侧边面板来自 [Framework7](https://framework7.io) 9.1.3，只打包了用到的组件（`vendor/`，普通脚本，双击打开也能加载；更新时运行 `npm install && npm run build:vendor`）；图标用 [Framework7 Icons](https://framework7.io/icons/)，以 data URI 内嵌在 `styles.css`。
 

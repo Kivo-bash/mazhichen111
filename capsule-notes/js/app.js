@@ -1177,9 +1177,9 @@
   renderAll();
   persist();
   /* 给玻璃按上透镜：顶部按钮组、底部工具条、侧边栏 */
-  $$(".topbar .glass").forEach((el) => Lens.attach(el, { bezel: 16, scale: 36, blur: 0.4 }));
-  Lens.attach($("#bottombar"), { bezel: 22, scale: 46, blur: 0.5 });
-  Lens.attach(panel.el, { bezel: 30, scale: 54, blur: 9, sat: 1.6 });
+  $$(".topbar .glass").forEach((el) => Lens.attach(el, { bezel: 16, scale: 36, blur: 10, sat: 1.8 }));
+  Lens.attach($("#bottombar"), { bezel: 22, scale: 46, blur: 10, sat: 1.8 });
+  Lens.attach(panel.el, { bezel: 30, scale: 54, blur: 12, sat: 1.8 });
 
   window.__capsuleNotes = { state, openInspector, undo, redo, f7, serializeDoc };
 })();
