@@ -44,28 +44,30 @@
     </div>
   </div>
 
-  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <canvas class="wallpaper" id="wallpaper" aria-hidden="true"></canvas>
+  <div class="veil" aria-hidden="true"></div>
 
   <!-- ========== 正文：直接在排好版的文档上编辑 ========== -->
   <main class="screen" id="scroller">
     <div class="column">
-      <h1 class="large-title" id="docTitle" contenteditable="plaintext-only" spellcheck="false" aria-label="文档标题"></h1>
-      <p class="meta" id="status"></p>
-      <article class="doc" id="doc" contenteditable="true" spellcheck="false" aria-label="文档内容" role="textbox" aria-multiline="true"></article>
+      <section class="card" id="card">
+        <h1 class="large-title" id="docTitle" contenteditable="plaintext-only" spellcheck="false" aria-label="文档标题"></h1>
+        <p class="meta" id="status"></p>
+        <article class="doc" id="doc" contenteditable="true" spellcheck="false" aria-label="文档内容" role="textbox" aria-multiline="true"></article>
+      </section>
     </div>
   </main>
 
   <!-- 顶部：悬浮玻璃按钮 -->
   <header class="topbar">
     <div class="glass group">
-      <button class="gbtn" id="sidebarBtn" type="button" aria-label="显示或隐藏文档列表" title="文档列表"><i class="f7-icons">sidebar_left</i></button>
+      <button class="gbtn" id="sidebarBtn" type="button" aria-label="显示或隐藏文档列表" title="文档列表"><i class="f7-icons">rectangle_stack</i></button>
     </div>
     <div class="topbar-right">
       <div class="glass group">
+        <button class="gbtn" id="rerollBtn" type="button" aria-label="全部重新随机" title="全部重新随机"><i class="f7-icons">shuffle</i></button>
         <button class="gbtn" id="undo" type="button" aria-label="撤销" title="撤销（⌘Z）"><i class="f7-icons">arrow_uturn_left</i></button>
         <button class="gbtn" id="redo" type="button" aria-label="重做" title="重做（⇧⌘Z）"><i class="f7-icons">arrow_uturn_right</i></button>
-      </div>
-      <div class="glass group">
         <button class="gbtn" id="moreBtn" type="button" aria-label="更多" title="更多"><i class="f7-icons">ellipsis</i></button>
       </div>
     </div>

@@ -247,8 +247,8 @@
   const f7 = new Framework7({
     el: "#app",
     theme: "ios",
-    darkMode: false,
-    colors: { primary: "#ff3b30" },
+    darkMode: true,
+    colors: { primary: "#0a84ff" },
     popover: { backdrop: false, closeByOutsideClick: true, closeOnEscape: false },
     toast: { closeTimeout: 1300, position: "center" },
     dialog: { buttonOk: "好", buttonCancel: "取消" },
@@ -331,6 +331,36 @@
     return { attach, ok };
   })();
 
+  /* ================= 背景：按文档生成一张虚化的"照片" ================= */
+  const bgCanvas = $("#wallpaper");
+  function paintBackdrop(seedStr) {
+    let seed = 0;
+    for (const ch of seedStr) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const W = 192, Hh = 120;
+    bgCanvas.width = W; bgCanvas.height = Hh;
+    const g = bgCanvas.getContext("2d");
+    const base = g.createLinearGradient(0, 0, W, Hh);
+    base.addColorStop(0, "#1b1013"); base.addColorStop(.5, "#2a1512"); base.addColorStop(1, "#101418");
+    g.fillStyle = base; g.fillRect(0, 0, W, Hh);
+    const palette = ["#b3261e", "#7a1a12", "#e0782a", "#f0b050", "#c9502a", "#1f6b72", "#2a4a6a", "#4a2344", "#d8c4a0", "#8a3a1a", "#0f3a3f"];
+    for (let i = 0; i < 46; i++) {
+      const x = rnd() * W, y = rnd() * Hh, r = 6 + rnd() * 34, col = palette[Math.floor(rnd() * palette.length)];
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const a = .35 + rnd() * .5;
+      gr.addColorStop(0, col + Math.round(a * 255).toString(16).padStart(2, "0"));
+      gr.addColorStop(1, col + "00");
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * W, y = rnd() * Hh, r = 1.5 + rnd() * 4;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, "rgba(255,230,190,.55)"); gr.addColorStop(1, "rgba(255,230,190,0)");
+      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+
   /* ================= 整体渲染 ================= */
   const app = $("#app"), docEl = $("#doc"), titleEl = $("#docTitle");
   function prune(d) {
@@ -341,6 +371,7 @@
     const d = cur();
     if (document.activeElement !== titleEl) titleEl.textContent = d.title || "";
     document.title = `${d.title || "未命名文档"} · 胶囊笔记`;
+    paintBackdrop(d.id);
     renderDocList();
     renderDoc();
     H();
@@ -882,6 +913,7 @@
   /* ================= 顶部与底部的玻璃按钮 ================= */
   for (const b of $$(".bottombar button, .topbar button")) b.addEventListener("mousedown", (e) => e.preventDefault());
   $$(".bottombar [data-cmd]").forEach((b) => b.addEventListener("click", () => formatCmd(b.dataset.cmd)));
+  $("#rerollBtn").addEventListener("click", () => rerollAll());
   $("#undo").addEventListener("click", () => { undo(); toast("已撤销"); });
   $("#redo").addEventListener("click", () => { redo(); toast("已重做"); });
 
@@ -1177,8 +1209,8 @@
   renderAll();
   persist();
   /* 给小块玻璃按上透镜：顶部按钮组、底部工具条。侧边栏太高，边缘折射会变成一道竖条，只用 15% 白 + 模糊 */
-  $$(".topbar .glass").forEach((el) => Lens.attach(el, { bezel: 16, scale: 36, blur: 10, sat: 1.8 }));
-  Lens.attach($("#bottombar"), { bezel: 22, scale: 46, blur: 10, sat: 1.8 });
+  $$(".topbar .glass").forEach((el) => Lens.attach(el, { bezel: 16, scale: 36, blur: 14, sat: 1.6 }));
+  Lens.attach($("#bottombar"), { bezel: 22, scale: 46, blur: 14, sat: 1.6 });
 
   window.__capsuleNotes = { state, openInspector, undo, redo, f7, serializeDoc };
 })();
