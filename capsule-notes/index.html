@@ -11,16 +11,10 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<!-- 液态玻璃的折射滤镜（Chromium 内核浏览器里用于 backdrop-filter） -->
-<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
-  <filter id="lg-refract" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <feTurbulence type="fractalNoise" baseFrequency="0.006 0.011" numOctaves="2" seed="11" result="noise"/>
-    <feGaussianBlur in="noise" stdDeviation="2.5" result="soft"/>
-    <feDisplacementMap in="SourceGraphic" in2="soft" scale="34" xChannelSelector="R" yChannelSelector="G"/>
-  </filter>
-</svg>
+<!-- 液态玻璃的透镜滤镜由脚本按每块玻璃的尺寸生成，放在这里 -->
+<svg class="defs" id="lensDefs" width="0" height="0" aria-hidden="true" focusable="false"></svg>
 
-<div id="app" data-mode="view" data-tab="view">
+<div id="app">
   <!-- ========== 侧边栏：Framework7 浮动面板 ========== -->
   <div class="panel panel-left panel-floating" id="sidebar">
     <div class="page">
@@ -45,59 +39,49 @@
         </form>
         <div class="block-title side-title">文档<span id="docCount"></span></div>
         <div class="list list-strong-ios list-dividers-ios inset doc-list" id="docList"><ul></ul></div>
-        <div class="block-footer side-foot">向左滑动或右键文档可以重命名、删除。文档只保存在当前浏览器里。</div>
+        <div class="block-footer side-foot">向左滑动文档可以删除，右键可以重命名或删除。文档只保存在当前浏览器里。</div>
       </div>
     </div>
   </div>
 
-  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
+  <!-- ========== 正文：直接在排好版的文档上编辑 ========== -->
   <main class="screen" id="scroller">
     <div class="column">
-      <div class="top-row">
-        <button class="round glass" id="sidebarBtn" type="button" aria-label="显示或隐藏文档列表" title="文档列表"><i class="f7-icons">sidebar_left</i></button>
-        <button class="round glass" id="helpBtn" type="button" aria-label="使用说明" title="使用说明"><i class="f7-icons">question</i></button>
-      </div>
-      <h1 class="large-title"><button id="titleBtn" type="button" title="点按重命名"><span id="docTitle"></span></button></h1>
-
-      <article class="doc" id="view"></article>
-      <div class="doc editor" id="editor" spellcheck="false" aria-label="文档内容（Markdown）" role="textbox" aria-multiline="true"></div>
+      <h1 class="large-title" id="docTitle" contenteditable="plaintext-only" spellcheck="false" aria-label="文档标题"></h1>
+      <p class="meta" id="status"></p>
+      <article class="doc" id="doc" contenteditable="true" spellcheck="false" aria-label="文档内容" role="textbox" aria-multiline="true"></article>
     </div>
   </main>
 
-  <!-- 底部悬浮：迷你条 + 标签栏 + 圆形按钮 -->
-  <div class="dock">
-    <div class="mini glass" id="mini">
-      <div class="mini-art" id="miniArt" aria-hidden="true"></div>
-      <div class="mini-text view-only"><b id="miniTitle"></b><span id="status"></span></div>
-      <div class="fmt edit-only" id="formatbar" role="toolbar" aria-label="格式">
-        <button type="button" data-md="h2" title="标题"><i class="f7-icons">textformat_size</i></button>
-        <button type="button" data-md="bold" title="粗体（⌘B）"><i class="f7-icons">bold</i></button>
-        <button type="button" data-md="italic" title="斜体（⌘I）"><i class="f7-icons">italic</i></button>
-        <button type="button" data-md="strike" title="删除线"><i class="f7-icons">strikethrough</i></button>
-        <button type="button" data-md="ul" title="无序列表"><i class="f7-icons">list_bullet</i></button>
-        <button type="button" data-md="ol" title="有序列表"><i class="f7-icons">list_number</i></button>
-        <button type="button" data-md="task" title="任务列表"><i class="f7-icons">checkmark_square</i></button>
-        <button type="button" data-md="quote" title="引用"><i class="f7-icons">text_quote</i></button>
-        <button type="button" data-md="code" title="行内代码"><i class="f7-icons">chevron_left_slash_chevron_right</i></button>
-        <button type="button" data-md="link" title="链接"><i class="f7-icons">link</i></button>
-        <button type="button" data-md="table" title="插入表格"><i class="f7-icons">table</i></button>
+  <!-- 顶部：悬浮玻璃按钮 -->
+  <header class="topbar">
+    <div class="glass group">
+      <button class="gbtn" id="sidebarBtn" type="button" aria-label="显示或隐藏文档列表" title="文档列表"><i class="f7-icons">sidebar_left</i></button>
+    </div>
+    <div class="topbar-right">
+      <div class="glass group">
+        <button class="gbtn" id="undo" type="button" aria-label="撤销" title="撤销（⌘Z）"><i class="f7-icons">arrow_uturn_left</i></button>
+        <button class="gbtn" id="redo" type="button" aria-label="重做" title="重做（⇧⌘Z）"><i class="f7-icons">arrow_uturn_right</i></button>
       </div>
-      <div class="mini-actions">
-        <button class="mini-btn" id="undo" type="button" aria-label="撤销" title="撤销（⌘Z）"><i class="f7-icons">arrow_uturn_left</i></button>
-        <button class="mini-btn" id="redo" type="button" aria-label="重做" title="重做（⇧⌘Z）"><i class="f7-icons">arrow_uturn_right</i></button>
+      <div class="glass group">
+        <button class="gbtn" id="moreBtn" type="button" aria-label="更多" title="更多"><i class="f7-icons">ellipsis</i></button>
       </div>
     </div>
-    <div class="dock-row">
-      <nav class="tabbar glass" role="tablist" aria-label="模式">
-        <span class="tab-bubble" aria-hidden="true"></span>
-        <button class="tab" type="button" role="tab" data-tab="view"><i class="f7-icons">book</i><span>浏览</span></button>
-        <button class="tab" type="button" role="tab" data-tab="formula"><i class="f7-icons">function</i><span>公式</span></button>
-        <button class="tab" type="button" role="tab" data-tab="edit"><i class="f7-icons">pencil</i><span>编辑</span></button>
-      </nav>
-      <button class="fab glass" id="fab" type="button"><i class="f7-icons" id="fabIcon">shuffle</i></button>
-    </div>
-  </div>
+  </header>
+
+  <!-- 底部：备忘录式的玻璃工具条 -->
+  <nav class="bottombar glass" id="bottombar" aria-label="插入与格式">
+    <button class="gbtn" type="button" id="fmtBtn" aria-label="文字格式" title="文字格式"><span class="aa">Aa</span></button>
+    <button class="gbtn" type="button" data-cmd="ul" aria-label="项目符号列表" title="项目符号列表"><i class="f7-icons">list_bullet</i></button>
+    <button class="gbtn" type="button" data-cmd="task" aria-label="清单" title="清单"><i class="f7-icons">checkmark_circle</i></button>
+    <button class="gbtn" type="button" data-cmd="table" aria-label="表格" title="插入表格"><i class="f7-icons">table</i></button>
+    <span class="bsep" aria-hidden="true"></span>
+    <button class="add-cap" type="button" id="addCap" title="在光标处插入胶囊"><i class="f7-icons">plus</i><span>胶囊</span></button>
+  </nav>
+
+  <div class="tip" id="tip" role="tooltip" hidden></div>
 </div>
 
 <script src="vendor/framework7.js"></script>
