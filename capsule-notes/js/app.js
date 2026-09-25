@@ -1,5 +1,5 @@
 /* 胶囊笔记：文档管理、编辑器、浏览视图、胶囊设置对话框、浮层与撤销/重做。
- * 界面按 macOS 习惯组织：侧边栏、统一工具栏、带箭头的气泡（用 Floating UI 定位）。 */
+ * 界面组件来自 Framework7（iOS 主题）：侧边面板、导航栏、工具栏、气泡、对话框、步进器、滑块、提示。 */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -15,8 +15,8 @@
   const tok = (id) => `{{${id}}}`;
 
   const KIND_ICON = {
-    random: '<svg class="k" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" class="fill"/><circle cx="15.5" cy="15.5" r="1.3" class="fill"/></svg>',
-    input: '<svg class="k" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5l4 4L9 19H5v-4z"/></svg>',
+    random: '<i class="f7-icons k" aria-hidden="true">shuffle</i>',
+    input: '<i class="f7-icons k" aria-hidden="true">pencil</i>',
     formula: "",
   };
 
@@ -152,7 +152,7 @@
     const d = cur();
     Object.assign(d, JSON.parse(s));
     d.updated = Date.now();
-    closePopover();
+    closeCurrent();
     renderAll();
     H().last = snap(d);
     persist();
@@ -174,11 +174,10 @@
   }
   function updateUndoButtons() {
     const h = H();
-    $("#undo").disabled = !h.past.length && snap(cur()) === h.last;
-    $("#redo").disabled = !h.future.length;
+    $("#undo").classList.toggle("disabled", !h.past.length && snap(cur()) === h.last);
+    $("#redo").classList.toggle("disabled", !h.future.length);
   }
-  $("#undo").addEventListener("click", undo);
-  $("#redo").addEventListener("click", redo);
+
 
   /* ================= 胶囊求值 ================= */
   const capsOf = (d) => Object.values(d.capsules);
@@ -229,45 +228,32 @@
   }
   const missingInner = '<span class="lb">已删除</span><b class="v">?</b>';
 
-  /* ================= 背景：按文档生成一张虚化的"照片" ================= */
-  const bgCanvas = $("#wallpaper");
-  function paintBackdrop(seedStr) {
-    let seed = 0;
-    for (const ch of seedStr) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
-    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    const W = 192, Hh = 120;
-    bgCanvas.width = W; bgCanvas.height = Hh;
-    const g = bgCanvas.getContext("2d");
-    const base = g.createLinearGradient(0, 0, W, Hh);
-    base.addColorStop(0, "#1b1013"); base.addColorStop(.5, "#2a1512"); base.addColorStop(1, "#101418");
-    g.fillStyle = base; g.fillRect(0, 0, W, Hh);
-    const palette = ["#b3261e", "#7a1a12", "#e0782a", "#f0b050", "#c9502a", "#1f6b72", "#2a4a6a", "#4a2344", "#d8c4a0", "#8a3a1a", "#0f3a3f"];
-    for (let i = 0; i < 46; i++) {
-      const x = rnd() * W, y = rnd() * Hh, r = 6 + rnd() * 34, col = palette[Math.floor(rnd() * palette.length)];
-      const gr = g.createRadialGradient(x, y, 0, x, y, r);
-      const a = .35 + rnd() * .5;
-      gr.addColorStop(0, col + Math.round(a * 255).toString(16).padStart(2, "0"));
-      gr.addColorStop(1, col + "00");
-      g.fillStyle = gr;
-      g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    for (let i = 0; i < 14; i++) {
-      const x = rnd() * W, y = rnd() * Hh, r = 1.5 + rnd() * 4;
-      const gr = g.createRadialGradient(x, y, 0, x, y, r);
-      gr.addColorStop(0, "rgba(255,230,190,.55)"); gr.addColorStop(1, "rgba(255,230,190,0)");
-      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-  }
+  /* ================= Framework7 应用 ================= */
+  const f7 = new Framework7({
+    el: "#app",
+    theme: "ios",
+    darkMode: false,
+    colors: { primary: "#007aff" },
+    popover: { backdrop: false, closeByOutsideClick: true, closeOnEscape: false },
+    toast: { closeTimeout: 1300, position: "center" },
+    dialog: { buttonOk: "好", buttonCancel: "取消" },
+  });
+  const WIDE = 960;
+  const panel = f7.panel.create({ el: "#sidebar", visibleBreakpoint: WIDE, swipe: true });
+  const toast = (text) => f7.toast.create({ text, destroyOnClose: true }).open();
 
   /* ================= 模式与整体渲染 ================= */
   const app = $("#app"), view = $("#view"), ed = $("#editor");
+  function syncModeUI() {
+    app.dataset.mode = state.mode;
+    $$("[data-set-mode]").forEach((b) => b.classList.toggle("button-active", b.dataset.setMode === state.mode));
+  }
   function setMode(m) {
-    closePopover();
+    closeCurrent();
     commitHistory();
     if (m === "view") prune(cur());
     state.mode = m;
-    app.dataset.mode = m;
-    $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === m)));
+    syncModeUI();
     if (m === "edit") renderEditor(); else renderView();
     H().last = snap(cur());
     persist();
@@ -278,19 +264,16 @@
     const used = new Set([...d.body.matchAll(TOKEN)].map((m) => m[1]));
     Object.keys(d.capsules).forEach((id) => { if (!used.has(id)) { delete d.capsules[id]; delete d.values[id]; } });
   }
-
   function renderAll() {
     const d = cur();
-    $("#title").value = d.title;
+    $("#docTitle").textContent = d.title || "未命名文档";
     document.title = `${d.title || "未命名文档"} · 胶囊笔记`;
-    paintBackdrop(d.id);
     renderDocList();
     if (state.mode === "edit") renderEditor(); else renderView();
     H();
     renderStatus();
     updateUndoButtons();
   }
-
   function renderStatus(msg) {
     const d = cur();
     const n = new Set([...d.body.matchAll(TOKEN)].map((m) => m[1])).size;
@@ -299,163 +282,151 @@
   }
 
   /* ================= 侧边栏 ================= */
-  const narrow = () => matchMedia("(max-width: 760px)").matches;
-  function setSidebar(show) {
-    app.classList.toggle("side-hidden", !show);
-    $("#sidebarBtn").setAttribute("aria-expanded", String(show));
-    if (!narrow()) { state.sideHidden = !show; persist(); }
-  }
-  setSidebar(narrow() ? false : !state.sideHidden);
-  $("#sidebarBtn").addEventListener("click", () => setSidebar(app.classList.contains("side-hidden")));
-  $("#scrim").addEventListener("click", () => setSidebar(false));
-
-  const DOC_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>';
-  const TRASH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+  const isWide = () => innerWidth >= WIDE;
+  $("#sidebarBtn").addEventListener("click", () => {
+    if (isWide()) panel.toggleVisibleBreakpoint();
+    else if (panel.opened) panel.close(); else panel.open();
+  });
   function renderDocList() {
     const q = $("#search").value.trim().toLowerCase();
     const docs = [...state.docs].sort((a, b) => b.updated - a.updated)
       .filter((d) => !q || (d.title + "\n" + d.body.replace(TOKEN, (_, id) => d.capsules[id]?.name || "")).toLowerCase().includes(q));
     $("#docCount").textContent = state.docs.length;
-    $("#docList").innerHTML = docs.length ? docs.map((d) => `
-      <div class="doc-item${d.id === state.currentId ? " on" : ""}" data-id="${d.id}">
-        <button class="open" type="button"${d.id === state.currentId ? ' aria-current="page"' : ""}>
-          ${DOC_ICON}<span class="t">${esc(d.title || "未命名文档")}</span>
-          <span class="d">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${Object.keys(d.capsules).length} 个胶囊</span>
-        </button>
-        ${state.docs.length > 1 ? `<button class="del" type="button" aria-label="删除「${esc(d.title)}」" title="删除">${TRASH_ICON}</button>` : ""}
-      </div>`).join("") : '<p class="doc-empty">没有匹配的文档</p>';
+    const canDelete = state.docs.length > 1;
+    $("#docList ul").innerHTML = docs.length ? docs.map((d) => `
+      <li class="${canDelete ? "swipeout " : ""}${d.id === state.currentId ? "on" : ""}" data-id="${d.id}">
+        ${canDelete ? '<div class="swipeout-content">' : ""}
+        <div class="item-content" role="button" tabindex="0"${d.id === state.currentId ? ' aria-current="page"' : ""}>
+          <div class="item-media"><i class="f7-icons">doc_text</i></div>
+          <div class="item-inner"><div class="item-title">${esc(d.title || "未命名文档")}
+            <div class="item-footer">${new Date(d.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${Object.keys(d.capsules).length} 个胶囊</div></div></div>
+        </div>
+        ${canDelete ? `</div><div class="swipeout-actions-right"><a class="swipeout-delete" data-confirm="「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。" data-confirm-title="删除文档？">删除</a></div>` : ""}
+      </li>`).join("") : '<li class="empty">没有匹配的文档</li>';
   }
   $("#search").addEventListener("input", renderDocList);
-  $("#docList").addEventListener("click", (e) => {
-    const item = e.target.closest(".doc-item");
-    if (!item) return;
-    const id = item.dataset.id;
-    const del = e.target.closest(".del");
-    if (del) {
-      if (!del.classList.contains("armed")) {
-        del.classList.add("armed");
-        del.textContent = "删除";
-        setTimeout(() => { if (del.isConnected) { del.classList.remove("armed"); del.innerHTML = TRASH_ICON; } }, 3000);
-        return;
-      }
-      state.docs = state.docs.filter((d) => d.id !== id);
-      hist.delete(id);
-      if (state.currentId === id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
-      persist();
-      renderAll();
-      return;
-    }
-    if (e.target.closest(".open") && id !== state.currentId) {
-      closePopover();
-      commitHistory();
-      prune(cur());
-      state.currentId = id;
-      if (narrow()) setSidebar(false);
-      persist();
-      renderAll();
-      $("#scroller").scrollTop = 0;
-    } else if (narrow()) setSidebar(false);
+  $("#searchForm .input-clear-button").addEventListener("click", () => { $("#search").value = ""; renderDocList(); });
+  function deleteDoc(id) {
+    state.docs = state.docs.filter((d) => d.id !== id);
+    hist.delete(id);
+    if (state.currentId === id) state.currentId = [...state.docs].sort((a, b) => b.updated - a.updated)[0].id;
+    persist();
+    renderAll();
+    toast("已删除文档");
+  }
+  function openDoc(id) {
+    if (narrowClose()) { /* 窄屏上选中后收起侧边栏 */ }
+    if (id === state.currentId) return;
+    closeCurrent();
+    commitHistory();
+    prune(cur());
+    state.currentId = id;
+    persist();
+    renderAll();
+    $("#scroller").scrollTop = 0;
+  }
+  const narrowClose = () => { if (!isWide() && panel.opened) { panel.close(); return true; } return false; };
+  const docListEl = $("#docList");
+  docListEl.addEventListener("click", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li || e.target.closest(".swipeout-actions-right")) return;
+    if (li.classList.contains("swipeout-opened")) return;
+    openDoc(li.dataset.id);
+  });
+  docListEl.addEventListener("keydown", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (li && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDoc(li.dataset.id); }
+  });
+  docListEl.addEventListener("swipeout:deleted", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (li) deleteDoc(li.dataset.id);
+  });
+  docListEl.addEventListener("contextmenu", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li || state.docs.length < 2) return;
+    e.preventDefault();
+    const d = state.docs.find((x) => x.id === li.dataset.id);
+    f7.dialog.confirm(`「${esc(d.title || "未命名文档")}」会被删除，且无法恢复。`, "删除文档？", () => deleteDoc(d.id));
   });
   $("#newDoc").addEventListener("click", () => {
-    closePopover();
+    closeCurrent();
     commitHistory();
     const d = { id: uid("d_"), title: "未命名文档", updated: Date.now(), body: "# 未命名文档\n\n在这里写一句简介。\n\n", capsules: {}, values: {} };
     state.docs.push(d);
     state.currentId = d.id;
     $("#search").value = "";
-    if (narrow()) setSidebar(false);
+    narrowClose();
     state.mode = "edit";
-    app.dataset.mode = "edit";
-    $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === "edit")));
+    syncModeUI();
     renderAll();
     persist();
-    $("#title").focus();
-    $("#title").select();
+    renameDoc();
   });
-  $("#title").addEventListener("input", (e) => {
-    cur().title = e.target.value;
-    document.title = `${e.target.value || "未命名文档"} · 胶囊笔记`;
-    touch();
-    renderDocList();
+  function renameDoc() {
+    const d = cur();
+    f7.dialog.prompt("", "给文档起个名字", (v) => {
+      v = String(v).trim();
+      if (!v || v === d.title) return;
+      d.title = v;
+      touch();
+      renderAll();
+    }, null, d.title);
+  }
+  $("#titleBtn").addEventListener("click", renameDoc);
+
+  /* 使用说明：Framework7 popup */
+  $("#helpBtn").addEventListener("click", () => {
+    closeCurrent();
+    f7.popup.create({
+      destroyOnClose: true,
+      content: `<div class="popup"><div class="page">
+        <div class="navbar"><div class="navbar-bg"></div><div class="navbar-inner"><div class="title">使用说明</div><div class="right"><a class="link popup-close">完成</a></div></div></div>
+        <div class="page-content"><div class="help-content">
+          <p>文档用 Markdown 书写，文中的<b>胶囊</b>是会变化的数字。</p>
+          <dl>
+            <dt><span class="pill demo" data-kind="random" data-color="violet"><span class="lb">随机</span><b class="v">7</b></span></dt>
+            <dd>在区间内随机取数。点一下重新抽取；底部的 <i class="f7-icons" style="font-size:16px">shuffle</i> 会让全部随机胶囊一起重抽。</dd>
+            <dt><span class="pill demo" data-kind="input" data-color="sky"><span class="lb">填写</span><b class="v">36.0</b><span class="u">g</span></span></dt>
+            <dd>由读者自己填。点开后输入数字或拖动滑块，超出区间会自动调整到边界。</dd>
+            <dt><span class="pill demo" data-kind="formula" data-color="rose"><span class="lb">公式</span><b class="v">19.0</b><span class="u">%</span></span></dt>
+            <dd>用其它胶囊的名字写公式，例如 <code>液重 * 浓度 / 粉量</code>。虚线框表示它是算出来的，点开能看到代入后的算式。</dd>
+          </dl>
+          <p>切到「编辑」后，把光标放在想要的位置点「插入胶囊」；点击已有胶囊会弹出设置气泡，改动即时生效，按 Esc 或「取消」撤回。点顶部的标题可以重命名文档；在侧边栏向左滑动或右键可以删除文档。</p>
+          <p class="keys"><kbd>⌘E</kbd> 切换模式　<kbd>⌘Z</kbd> 撤销　<kbd>⇧⌘Z</kbd> 重做　<kbd>⌘B</kbd> <kbd>⌘I</kbd> 粗体、斜体</p>
+        </div></div></div></div>`,
+    }).open();
   });
-  $("#title").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); (state.mode === "edit" ? ed : e.target).focus(); } });
 
-  /* 使用说明 sheet */
-  const help = $("#helpSheet");
-  $("#helpBtn").addEventListener("click", () => { closePopover(); help.showModal(); });
-  $("#helpClose").addEventListener("click", () => help.close());
-  help.addEventListener("click", (e) => { if (e.target === help) help.close(); });
-
-  /* ================= 气泡（Floating UI 定位，带箭头） ================= */
-  const FUI = window.FloatingUIDOM;
-  const po = $("#popover"), poBody = $("#poBody"), poArrow = $("#poArrow");
-  let poState = null;
-  function openPopover(anchor, html, { small = false, color = "", label = "", onClose } = {}) {
-    closePopover();
-    poBody.innerHTML = html;
-    po.classList.toggle("small", small);
-    po.dataset.color = color;
-    po.setAttribute("aria-label", label);
-    po.hidden = false;
-    po.classList.remove("enter");
-    void po.offsetWidth;
-    if (!reduceMotion) po.classList.add("enter");
+  /* ================= 气泡（Framework7 popover） ================= */
+  let current = null; // { anchor, popover, cancel }
+  function openPop(anchor, html, cls, onClosed) {
+    closeCurrent();
+    const entry = { anchor, cancel: false };
+    const p = f7.popover.create({
+      targetEl: anchor,
+      content: `<div class="popover ${cls}"${anchor.dataset.color ? ` data-color="${anchor.dataset.color}"` : ""}><div class="popover-inner">${html}</div></div>`,
+      backdrop: false,
+      closeByOutsideClick: true,
+      on: {
+        close() { anchor.classList.remove("open"); },
+        closed() { if (current === entry) current = null; if (onClosed) onClosed(entry); const el = p.el; p.destroy(); if (el && el.parentNode) el.parentNode.removeChild(el); },
+      },
+    });
+    entry.popover = p;
+    current = entry;
     anchor.classList.add("open");
-    const update = () => {
-      if (!FUI) {
-        const r = anchor.getBoundingClientRect();
-        po.style.left = `${Math.max(12, Math.min(innerWidth - po.offsetWidth - 12, r.left + r.width / 2 - po.offsetWidth / 2))}px`;
-        po.style.top = `${r.bottom + 12}px`;
-        return;
-      }
-      FUI.computePosition(anchor, po, {
-        placement: "bottom", strategy: "fixed",
-        middleware: [FUI.offset(12), FUI.flip({ padding: 12 }), FUI.shift({ padding: 12 }), FUI.arrow({ element: poArrow, padding: 16 })],
-      }).then(({ x, y, placement, middlewareData }) => {
-        const side = placement.split("-")[0];
-        po.style.left = `${x}px`;
-        po.style.top = `${y}px`;
-        po.dataset.side = side;
-        po.style.transformOrigin = side === "top" ? "bottom center" : "top center";
-        const a = middlewareData.arrow || {};
-        const staticSide = { top: "bottom", bottom: "top", left: "right", right: "left" }[side];
-        Object.assign(poArrow.style, { left: a.x != null ? `${a.x}px` : "", top: a.y != null ? `${a.y}px` : "", right: "", bottom: "" });
-        poArrow.style[staticSide] = "-6px";
-      });
-    };
-    const cleanup = FUI ? FUI.autoUpdate(anchor, po, update) : (update(), () => {});
-    poState = { anchor, cleanup, onClose };
+    p.open();
+    return { entry, root: p.el };
   }
-  function closePopover(reason = "commit", restoreFocus = false) {
-    if (!poState) return;
-    const s = poState;
-    poState = null;
-    s.cleanup();
-    po.hidden = true;
-    s.anchor.classList.remove("open");
-    poBody.innerHTML = "";
-    if (s.onClose) s.onClose(reason);
-    if (restoreFocus && s.anchor.isConnected && s.anchor.focus) s.anchor.focus();
+  function closeCurrent(cancel = false) {
+    if (!current) return;
+    const c = current;
+    c.cancel = cancel;
+    current = null;
+    c.popover.close(false);
   }
-  document.addEventListener("pointerdown", (e) => {
-    if (poState && !po.contains(e.target) && !poState.anchor.contains(e.target)) closePopover("commit");
-  });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && poState) { e.preventDefault(); closePopover("cancel", true); } });
-  addEventListener("resize", () => { if (poState && !poState.anchor.isConnected) closePopover(); });
-
-  /* 步进器（气泡里所有 [data-step] 按钮共用） */
-  const STEP_UP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
-  const STEP_DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
-  const stepper = (id, value, step, extra = "") => `<div class="stepper"><input class="field" type="number" id="${id}" value="${value}" step="${step}" ${extra}>
-    <div class="arrows"><button type="button" tabindex="-1" data-step="1" data-for="${id}" aria-label="增加">${STEP_UP}</button><button type="button" tabindex="-1" data-step="-1" data-for="${id}" aria-label="减少">${STEP_DOWN}</button></div></div>`;
-  poBody.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-step]");
-    if (!b) return;
-    const input = $(`#${b.dataset.for}`, poBody);
-    const step = parseFloat(input.step) || 1, dec = (String(input.step).split(".")[1] || "").length;
-    const next = (parseFloat(input.value) || 0) + step * +b.dataset.step;
-    input.value = next.toFixed(dec);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && current) { e.preventDefault(); const a = current.anchor; closeCurrent(true); if (a.focus) a.focus(); }
   });
 
   /* ================= 浏览视图 ================= */
@@ -473,7 +444,7 @@
     view.innerHTML = html.trim() ? html : '<p class="empty">这篇文档还是空的，切换到「编辑」开始写吧。</p>';
     view.classList.toggle("show-fx", !!state.showFx);
     const hasRandom = capsOf(d).some((c) => kindKey(c) === "random" && d.body.includes(tok(c.id)));
-    $("#rerollAll").disabled = !hasRandom;
+    $("#rerollAll").classList.toggle("disabled", !hasRandom);
   }
   function syncPill(el, fresh) {
     const open = el.classList.contains("open");
@@ -508,13 +479,13 @@
     const d = cur(), c = d.capsules[el.dataset.id];
     if (!c) return;
     const k = kindKey(c);
+    if (current && current.anchor === el) { closeCurrent(); return; }
     if (k === "random") {
-      closePopover();
+      closeCurrent();
       d.values[c.id] = randomIn(c);
       touch();
       roll(el, c);
-    } else if (poState && poState.anchor === el) closePopover();
-    else if (k === "input") openInputPop(el, c);
+    } else if (k === "input") openInputPop(el, c);
     else openFormulaPop(el, c);
   });
   $("#rerollAll").addEventListener("click", () => {
@@ -533,36 +504,42 @@
     view.classList.toggle("show-fx", state.showFx);
     persist();
   });
+  $("#undo").addEventListener("click", () => { undo(); toast("已撤销"); });
+  $("#redo").addEventListener("click", () => { redo(); toast("已重做"); });
 
   function openInputPop(el, c) {
-    const d = cur(), [lo, hi] = bounds(c), dec = decimalsOf(c), step = dec ? Math.pow(10, -dec).toFixed(dec) : "1";
+    const d = cur(), [lo, hi] = bounds(c), dec = decimalsOf(c), step = dec ? Math.pow(10, -dec) : 1;
     const v = valueOf(d, c);
-    const pct = (x) => `${hi > lo ? ((x - lo) / (hi - lo)) * 100 : 0}%`;
-    openPopover(el, `
-      <div class="po-title"><span class="dot"></span>${esc(c.name)}<small>${numText(c, lo)} – ${numText(c, hi)}${c.unit ? " " + esc(c.unit) : ""}</small></div>
-      <div class="big-num">${stepper("popNum", v.toFixed(dec), step, `inputmode="decimal" min="${lo}" max="${hi}" aria-label="${esc(c.name)}"`)}${c.unit ? `<span class="unit">${esc(c.unit)}</span>` : ""}</div>
-      <input class="slider" type="range" id="popRange" min="${lo}" max="${hi}" step="${step}" value="${v}" style="--p:${pct(v)}" aria-label="${esc(c.name)} 滑块">
+    const { root } = openPop(el, `
+      <div class="pop-head"><span class="dot"></span>${esc(c.name)}<small>${numText(c, lo)} – ${numText(c, hi)}${c.unit ? " " + esc(c.unit) : ""}</small></div>
+      <div class="val-body">
+        <div class="val-row"><input class="num-input" type="number" id="popNum" inputmode="decimal" value="${v.toFixed(dec)}" step="${step}" min="${lo}" max="${hi}" aria-label="${esc(c.name)}">${c.unit ? `<span class="unit">${esc(c.unit)}</span>` : ""}</div>
+        <div class="range-slider" id="popRange"></div>
+      </div>
       <p class="note">超出区间的数会自动调整到最近的边界。</p>
-      <div class="po-foot"><button class="btn btn-plain" type="button" id="popReset">恢复默认</button><span class="spacer"></span><button class="btn btn-primary" type="button" id="popOk">完成</button></div>`,
-      { small: true, color: c.color, label: c.name });
-    const num = $("#popNum"), rng = $("#popRange");
-    const apply = (raw, fromRange) => {
+      <div class="pop-foot"><button class="button button-round" type="button" id="popReset">恢复默认</button><span class="spacer"></span><button class="button button-fill button-round" type="button" id="popOk">完成</button></div>`,
+      "val-pop");
+    const num = $("#popNum", root);
+    let syncing = false;
+    const range = f7.range.create({
+      el: $("#popRange", root), min: lo, max: hi, step, value: v, label: false,
+      on: { change(r, val) { if (syncing) return; apply(val, true); } },
+    });
+    function apply(raw, fromRange) {
       const n = parseFloat(raw);
       if (!Number.isFinite(n)) return;
       d.values[c.id] = clampToRange(c, n);
-      if (fromRange) num.value = d.values[c.id].toFixed(dec); else rng.value = d.values[c.id];
-      rng.style.setProperty("--p", pct(d.values[c.id]));
+      if (fromRange) num.value = d.values[c.id].toFixed(dec);
+      else { syncing = true; range.setValue(d.values[c.id]); syncing = false; }
       touch();
       refreshPills();
-    };
+    }
     num.addEventListener("input", () => apply(num.value, false));
     num.addEventListener("change", () => { num.value = d.values[c.id].toFixed(dec); });
-    rng.addEventListener("input", () => apply(rng.value, true));
-    num.addEventListener("keydown", (e) => { if (e.key === "Enter") closePopover("commit", true); });
-    $("#popOk").addEventListener("click", () => closePopover("commit", true));
-    $("#popReset").addEventListener("click", () => { apply(String(initialValue({ ...c, source: "input" })), false); num.value = d.values[c.id].toFixed(dec); });
-    num.focus();
-    num.select();
+    num.addEventListener("keydown", (e) => { if (e.key === "Enter") closeCurrent(); });
+    $("#popOk", root).addEventListener("click", () => closeCurrent());
+    $("#popReset", root).addEventListener("click", () => { apply(String(initialValue({ ...c, source: "input" })), false); num.value = d.values[c.id].toFixed(dec); });
+    setTimeout(() => { num.focus(); num.select(); }, 60);
   }
   function openFormulaPop(el, c) {
     const d = cur(), r = safeValue(d, c);
@@ -572,15 +549,14 @@
       const rv = safeValue(d, o);
       return rv.err ? "?" : numText(o, rv.v);
     });
-    openPopover(el, `
-      <div class="po-title"><span class="dot"></span>${esc(c.name)}<small>公式</small></div>
+    openPop(el, `
+      <div class="pop-head"><span class="dot"></span>${esc(c.name)}<small>公式</small></div>
       <div class="calc">
         <div>${esc(c.name)} = ${esc(Expr.pretty(c.formula))}</div>
         <div>= ${esc(sub)}</div>
         <div class="res">= ${r.err ? esc(r.err) : esc(fullText(c, r.v))}</div>
       </div>
-      <p class="note">公式里用到的胶囊一变，这里会自动重新计算。</p>`,
-      { small: true, color: c.color, label: `${c.name} 的算式` });
+      <p class="note">公式里用到的胶囊一变，这里会自动重新计算。</p>`, "val-pop");
   }
 
   /* ================= 编辑器 ================= */
@@ -739,7 +715,7 @@
     const p = e.target.closest(".pill");
     if (!p) return;
     e.preventDefault();
-    if (poState && poState.anchor === p) return;
+    if (current && current.anchor === p) return;
     if (cur().capsules[p.dataset.id]) openInspector(p.dataset.id);
   });
 
@@ -791,84 +767,83 @@
     while (byName(d, `数值${n}`)) n++;
     return { id: uid("c_"), name: `数值${n}`, kind: "range", source: "random", min: 1, max: 100, decimals: 0, def: null, formula: "", unit: "", color: COLORS[capsOf(d).length % COLORS.length][0] };
   }
-  const radio = (name, value, label, cur) => `<label><input type="radio" name="${name}" value="${value}"${cur === value ? " checked" : ""}>${label}</label>`;
+  const seg = (key, options, value) => `<div class="segmented segmented-strong" data-seg="${key}" role="radiogroup">${options.map(([v, label]) =>
+    `<button type="button" class="button${v === value ? " button-active" : ""}" data-v="${v}" role="radio" aria-checked="${v === value}">${label}</button>`).join("")}<span class="segmented-highlight"></span></div>`;
+  const row = (title, control, cls = "") => `<li class="item-content ${cls}"><div class="item-inner"><div class="item-title">${title}</div><div class="item-after">${control}</div></div></li>`;
   function openInspector(id, { isNew = false, snapshot = null } = {}) {
     const d = cur();
     const anchor = ed.querySelector(`.pill[data-id="${id}"]`);
     const c = d.capsules[id];
     if (!anchor || !c) return;
-    ctx = { id, isNew, snapshot: snapshot || snap(d), appliedName: c.name };
+    const me = { id, isNew, snapshot: snapshot || snap(d), appliedName: c.name, root: null, decStepper: null };
+    ctx = me;
     const others = capsOf(d).filter((o) => o.id !== c.id);
     const num = (v) => (v === null || v === undefined || v === "" ? "" : v);
-    const st = decimalsOf(c) ? Math.pow(10, -decimalsOf(c)).toFixed(decimalsOf(c)) : "1";
-    openPopover(anchor, `
-      <div class="po-title"><span class="dot" id="fDot"></span><span id="fHead">${isNew ? "新胶囊" : "胶囊设置"}</span><small id="fKindLabel"></small></div>
-      <div class="form" id="capForm">
-        <label class="l" for="fName">名称</label><input class="field" id="fName" value="${esc(c.name)}" maxlength="24" autocomplete="off" spellcheck="false">
-        <span class="l">类型</span>
-        <div class="seg-sm" role="radiogroup" aria-label="类型">${radio("kind", "range", "区间", c.kind)}${radio("kind", "formula", "计算函数", c.kind)}</div>
-        <span class="l gR">区间</span>
-        <div class="pair gR">${stepper("fMin", num(c.min), st, 'aria-label="最小值"')}<span>–</span>${stepper("fMax", num(c.max), st, 'aria-label="最大值"')}</div>
-        <span class="l gR">浏览时</span>
-        <div class="seg-sm gR" role="radiogroup" aria-label="浏览时">${radio("source", "random", "随机生成", c.source === "input" ? "input" : "random")}${radio("source", "input", "用户填写", c.source === "input" ? "input" : "random")}</div>
-        <label class="l gR gD" for="fDef">默认值</label>
-        <div class="gR gD">${stepper("fDef", num(c.def), st, 'placeholder="取最小值"')}</div>
-        <label class="l top gF" for="fFormula">公式</label>
-        <div class="gF">
-          <textarea class="area" id="fFormula" rows="2" placeholder="例如：液重 / 粉量" spellcheck="false">${esc(c.formula || "")}</textarea>
-          ${others.length ? `<div class="chips" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-kind="${kindKey(o)}" data-color="${o.color}" data-ins="${esc(o.name)}"><span class="lb">${esc(o.name)}</span></button>`).join("")}</div>` : '<p class="hint">文档里还没有其它胶囊。</p>'}
-          <p class="hint">+ − × ÷ ^ %、括号；round(x, 位数)、min、max、sum、avg、abs、sqrt、if(条件, 是, 否)</p>
-        </div>
-        <label class="l" for="fDec">小数位</label>
-        <select class="select" id="fDec" style="width:110px">${[0, 1, 2, 3, 4].map((n) => `<option value="${n}"${n === decimalsOf(c) ? " selected" : ""}>${n} 位</option>`).join("")}</select>
-        <label class="l" for="fUnit">单位</label><input class="field" id="fUnit" value="${esc(c.unit || "")}" maxlength="8" placeholder="例如 g、%、元">
-        <span class="l">颜色</span>
-        <div class="colors" role="radiogroup" aria-label="颜色">${COLORS.map(([k, label]) => `<label data-color="${k}" title="${label}"><input type="radio" name="color" value="${k}"${c.color === k ? " checked" : ""} aria-label="${label}"></label>`).join("")}</div>
-        <div class="full preview" id="preview" aria-live="polite"></div>
+    const { root } = openPop(anchor, `
+      <div class="pop-head"><span class="dot"></span><span>${isNew ? "新胶囊" : "胶囊设置"}</span><small id="fKindLabel"></small></div>
+      <div class="list list-strong-ios list-dividers-ios cap-form" id="capForm"><ul>
+        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">名称</div><div class="item-input-wrap"><input type="text" id="fName" value="${esc(c.name)}" maxlength="24" autocomplete="off" spellcheck="false"></div></div></li>
+        ${row("类型", seg("kind", [["range", "区间"], ["formula", "计算函数"]], c.kind))}
+        ${row("区间", `<div class="pair"><input class="num-input" type="number" id="fMin" value="${num(c.min)}" step="any" aria-label="最小值"><span>–</span><input class="num-input" type="number" id="fMax" value="${num(c.max)}" step="any" aria-label="最大值"></div>`, "gR")}
+        ${row("浏览时", seg("source", [["random", "随机生成"], ["input", "用户填写"]], c.source === "input" ? "input" : "random"), "gR")}
+        ${row("默认值", `<input class="num-input" type="number" id="fDef" value="${num(c.def)}" step="any" placeholder="最小值" aria-label="默认值">`, "gR gD")}
+        <li class="item-content item-input gF"><div class="item-inner"><div class="item-title item-label">公式</div><div class="item-input-wrap"><textarea class="formula resizable" id="fFormula" placeholder="例如：液重 / 粉量" spellcheck="false">${esc(c.formula || "")}</textarea></div></div></li>
+        ${row("小数位", `<div class="stepper stepper-small stepper-raised" id="fDec"><div class="stepper-button-minus"></div><div class="stepper-input-wrap"><input type="text" value="${decimalsOf(c)}" readonly aria-label="小数位"></div><div class="stepper-button-plus"></div></div>`)}
+        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">单位</div><div class="item-input-wrap"><input type="text" id="fUnit" value="${esc(c.unit || "")}" maxlength="8" placeholder="例如 g、%、元"></div></div></li>
+        ${row("颜色", `<div class="colors" role="radiogroup" aria-label="颜色">${COLORS.map(([k, label]) => `<label data-color="${k}" title="${label}"><input type="radio" name="color" value="${k}"${c.color === k ? " checked" : ""} aria-label="${label}"></label>`).join("")}</div>`)}
+      </ul></div>
+      <div class="gF">
+        ${others.length ? `<div class="chips" aria-label="点击插入其它胶囊的名称">${others.map((o) => `<button type="button" class="pill" data-kind="${kindKey(o)}" data-color="${o.color}" data-ins="${esc(o.name)}"><span class="lb">${esc(o.name)}</span></button>`).join("")}</div>` : ""}
+        <p class="hint">支持 + − × ÷ ^ % 和括号；round(x, 位数)、min、max、sum、avg、abs、sqrt、if(条件, 是, 否)</p>
       </div>
-      <div class="po-foot">
-        ${isNew ? "" : '<button class="btn btn-danger" type="button" id="fDel">删除</button>'}
+      <div class="preview" id="preview" aria-live="polite"></div>
+      <div class="pop-foot">
+        ${isNew ? "" : '<button class="button danger" type="button" id="fDel">删除</button>'}
         <span class="spacer"></span>
-        <button class="btn" type="button" id="fCancel">取消</button>
-        <button class="btn btn-primary" type="button" id="fDone">完成</button>
-      </div>`,
-      { color: c.color, label: "胶囊设置", onClose: onInspectorClose });
-    const form = $("#capForm");
-    form.addEventListener("input", onFormChange);
-    form.addEventListener("change", onFormChange);
-    form.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") { e.preventDefault(); closePopover("commit"); } });
-    $("#fCancel").addEventListener("click", () => closePopover("cancel"));
-    $("#fDone").addEventListener("click", () => closePopover("commit"));
-    $$("[data-ins]", poBody).forEach((b) => b.addEventListener("click", () => {
-      const ta = $("#fFormula"), s = ta.selectionStart, e2 = ta.selectionEnd, name = b.dataset.ins;
+        <button class="button button-tonal button-round" type="button" id="fCancel">取消</button>
+        <button class="button button-fill button-round" type="button" id="fDone">完成</button>
+      </div>`, "cap-pop", (entry) => onInspectorClose(me, entry.cancel ? "cancel" : me.reason || "commit"));
+    me.root = root;
+    me.decStepper = f7.stepper.create({ el: $("#fDec", root), min: 0, max: 4, step: 1, value: decimalsOf(c), on: { change() { onFormChange(); } } });
+    root.addEventListener("input", onFormChange);
+    root.addEventListener("change", onFormChange);
+    $$("[data-seg] .button", root).forEach((b) => b.addEventListener("click", () => {
+      $$(".button", b.parentElement).forEach((x) => { x.classList.toggle("button-active", x === b); x.setAttribute("aria-checked", String(x === b)); });
+      onFormChange();
+    }));
+    root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); closeCurrent(); } });
+    $("#fCancel", root).addEventListener("click", () => closeCurrent(true));
+    $("#fDone", root).addEventListener("click", () => closeCurrent());
+    $$("[data-ins]", root).forEach((b) => b.addEventListener("click", () => {
+      const ta = $("#fFormula", root), s = ta.selectionStart, e2 = ta.selectionEnd, name = b.dataset.ins;
       ta.value = ta.value.slice(0, s) + name + ta.value.slice(e2);
       ta.focus();
       ta.setSelectionRange(s + name.length, s + name.length);
       onFormChange();
     }));
-    const del = $("#fDel");
+    const del = $("#fDel", root);
     if (del) del.addEventListener("click", () => {
       if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "确定删除？"; return; }
-      closePopover("delete");
+      me.reason = "delete";
+      closeCurrent();
     });
     onFormChange();
-    const n = $("#fName");
-    n.focus();
-    n.select();
+    setTimeout(() => { const n = $("#fName", root); n.focus(); n.select(); }, 80);
   }
   function readForm() {
-    const d = cur(), c = { ...d.capsules[ctx.id] }, f = (id) => $(id, poBody);
+    const root = ctx.root, d = cur(), c = { ...d.capsules[ctx.id] }, f = (id) => $(id, root);
     const numOrNull = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
+    const segVal = (k) => ($(`[data-seg="${k}"] .button-active`, root) || {}).dataset?.v;
     c.name = f("#fName").value.trim();
-    c.kind = $('input[name="kind"]:checked', poBody).value;
-    c.source = $('input[name="source"]:checked', poBody).value;
+    c.kind = segVal("kind") || "range";
+    c.source = segVal("source") || "random";
     c.min = numOrNull(f("#fMin").value);
     c.max = numOrNull(f("#fMax").value);
     c.def = c.kind === "formula" ? null : numOrNull(f("#fDef").value);
     c.formula = f("#fFormula").value.trim();
-    c.decimals = +f("#fDec").value;
+    c.decimals = ctx.decStepper ? ctx.decStepper.getValue() : decimalsOf(c);
     c.unit = f("#fUnit").value.trim();
-    c.color = ($('input[name="color"]:checked', poBody) || {}).value || c.color;
+    c.color = ($('input[name="color"]:checked', root) || {}).value || c.color;
     return c;
   }
   function validate(c) {
@@ -897,23 +872,23 @@
     return { ...d, capsules, values: { ...d.values, [c.id]: undefined } };
   }
   function onFormChange() {
-    if (!ctx) return;
-    const c = readForm(), k = kindKey(c);
-    $$(".gR", poBody).forEach((el) => { el.hidden = c.kind !== "range"; });
-    $$(".gF", poBody).forEach((el) => { el.hidden = c.kind !== "formula"; });
-    if (c.kind === "range") $$(".gD", poBody).forEach((el) => { el.hidden = c.source !== "input"; });
-    const st = c.decimals ? Math.pow(10, -c.decimals).toFixed(c.decimals) : "1";
-    ["#fMin", "#fMax", "#fDef"].forEach((id) => { $(id, poBody).step = st; });
-    po.dataset.color = c.color;
-    $("#fKindLabel").textContent = kindLabel[k];
-    const prev = $("#preview"), done = $("#fDone");
-    let err = validate(c), t = null, r = null;
-    if (!err) { t = trialDoc(c); r = safeValue(t, c); if (r.err) err = r.err; }
-    done.disabled = false;
-    if (err) { prev.innerHTML = `<span class="msg bad">${esc(err)}</span>`; return; }
-    applyCapsule(c);
-    const text = { random: "浏览时点一下会在区间内重新抽取", input: "浏览时读者可以点开填写", formula: `= ${Expr.pretty(c.formula)}` }[k];
-    prev.innerHTML = `<span class="pill demo" data-kind="${k}" data-color="${c.color}">${pillInner(cur(), cur().capsules[c.id]).html}</span><span class="msg">${esc(text)}</span>`;
+    if (!ctx || !ctx.root) return;
+    const root = ctx.root, c = readForm(), k = kindKey(c);
+    $$(".gR", root).forEach((el) => { el.hidden = c.kind !== "range"; });
+    $$(".gF", root).forEach((el) => { el.hidden = c.kind !== "formula"; });
+    if (c.kind === "range") $$(".gD", root).forEach((el) => { el.hidden = c.source !== "input"; });
+    root.dataset.color = c.color;
+    $("#fKindLabel", root).textContent = kindLabel[k];
+    const prev = $("#preview", root);
+    let err = validate(c);
+    if (!err) { const r = safeValue(trialDoc(c), c); if (r.err) err = r.err; }
+    if (err) prev.innerHTML = `<span class="msg bad">${esc(err)}</span>`;
+    else {
+      applyCapsule(c);
+      const text = { random: "浏览时点一下会在区间内重新抽取", input: "浏览时读者可以点开填写", formula: `= ${Expr.pretty(c.formula)}` }[k];
+      prev.innerHTML = `<span class="pill demo" data-kind="${k}" data-color="${c.color}">${pillInner(cur(), cur().capsules[c.id]).html}</span><span class="msg">${esc(text)}</span>`;
+    }
+    if (current && current.popover) current.popover.resize();
   }
   function applyCapsule(c) {
     const d = cur(), prev = d.capsules[c.id];
@@ -930,26 +905,25 @@
     }
     refreshEditorPills();
   }
-  function onInspectorClose(reason) {
-    const d = cur(), c = ctx;
-    ctx = null;
-    if (!c) return;
+  function onInspectorClose(me, reason) {
+    if (ctx === me) ctx = null;
+    if (me.decStepper) { me.decStepper.destroy(); me.decStepper = null; }
+    const d = cur();
     if (reason === "cancel") {
-      Object.assign(d, JSON.parse(c.snapshot));
-      renderEditor();
-      ed.focus();
+      Object.assign(d, JSON.parse(me.snapshot));
+      if (state.mode === "edit") renderEditor();
       return;
     }
     if (reason === "delete") {
-      d.body = d.body.split(tok(c.id)).join("");
-      delete d.capsules[c.id];
-      delete d.values[c.id];
-      renderEditor();
-      ed.focus();
+      d.body = d.body.split(tok(me.id)).join("");
+      delete d.capsules[me.id];
+      delete d.values[me.id];
+      if (state.mode === "edit") renderEditor();
       touch();
+      toast("已删除胶囊");
       return;
     }
-    if (snap(d) !== c.snapshot) touch();
+    if (snap(d) !== me.snapshot) touch();
   }
   function refreshEditorPills() {
     const d = cur();
@@ -960,7 +934,7 @@
   $("#insertCap").addEventListener("mousedown", (e) => e.preventDefault());
   $("#insertCap").addEventListener("click", () => {
     if (state.mode !== "edit") return;
-    closePopover();
+    closeCurrent();
     const d = cur(), before = snap(d);
     const [a, b] = getSel();
     const c = newCapsule(d);
@@ -974,21 +948,20 @@
   });
 
   /* ================= 快捷键 & 启动 ================= */
-  const inField = (el) => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
+  const inField = (el) => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     const k = e.key.toLowerCase();
     if (k === "e") { e.preventDefault(); setMode(state.mode === "edit" ? "view" : "edit"); return; }
-    if ((k === "z" || k === "y") && !poState && !inField(document.activeElement)) {
+    if ((k === "z" || k === "y") && !current && !inField(document.activeElement)) {
       e.preventDefault();
-      if (k === "y" || e.shiftKey) redo(); else undo();
+      if (k === "y" || e.shiftKey) { redo(); toast("已重做"); } else { undo(); toast("已撤销"); }
     }
   });
-  app.dataset.mode = state.mode;
-  $$("[data-set-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setMode === state.mode)));
+  syncModeUI();
   renderAll();
   persist();
 
-  window.__capsuleNotes = { state, setMode, openInspector, undo, redo };
+  window.__capsuleNotes = { state, setMode, openInspector, undo, redo, f7 };
 })();

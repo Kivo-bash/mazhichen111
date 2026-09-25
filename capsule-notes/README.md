@@ -14,11 +14,11 @@
 
 直接用浏览器打开 `index.html` 即可，不需要安装或构建。
 
-界面按 macOS 应用的习惯组织：透出壁纸的玻璃侧边栏、按钮成组的统一工具栏、带箭头的设置气泡、从顶部滑下的说明面板，控件（分段控件、步进器、弹出菜单、滑块、颜色选择）按桌面尺寸绘制。气泡定位用 [Floating UI](https://floating-ui.com) 1.7.4（`vendor/` 里的两个 UMD 文件，双击打开也能加载；更新时运行 `npm install && npm run build:vendor`）。图标线条参照 [Lucide](https://lucide.dev)（ISC 许可）。
+界面组件来自 [Framework7](https://framework7.io) 9.1.3 的 iOS 主题（iOS 26 液态玻璃风格）：浮动侧边面板、导航栏、底部工具栏、气泡、对话框、弹窗、提示、步进器、滑块、搜索栏、左滑删除；图标用 [Framework7 Icons](https://framework7.io/icons/)（和 SF Symbols 同风格）。只打包了用到的组件，放在 `vendor/`（普通脚本，双击打开也能加载）；需要更新时运行 `npm install && npm run build:vendor`。
 
 - **浏览 / 编辑**：右上角切换，快捷键 `Ctrl/⌘ + E`。
 - **撤销 / 重做**：顶栏按钮或 `Ctrl/⌘ + Z`、`Ctrl/⌘ + Shift + Z`，文字、胶囊设置和浏览时填的数都能撤销。
-- **文档列表**：左侧边栏，可以搜索；工具栏最左边的按钮可以收起。
+- **文档列表**：左侧边栏，可以搜索；向左滑动或右键删除；点顶部标题可以重命名。宽屏常驻，窄屏从左侧滑出。
 - **插入胶囊**：编辑模式下把光标放到想要的位置，点「插入胶囊」。
 - **修改胶囊**：编辑模式下点击胶囊，旁边弹出设置气泡，改动即时生效；按「完成」或点空白处保留，按 Esc 或「取消」撤回这次修改。改名后，其它公式里的引用会自动更新。
 - **Markdown**：支持标题、粗体、斜体、删除线、行内代码、代码块、引用、有序/无序/任务列表、表格、链接和分割线。工具栏按钮和 `Ctrl/⌘ + B / I` 可以快速插入格式，回车会自动延续列表。
@@ -38,8 +38,9 @@
 ```
 capsule-notes/
 ├── index.html        页面结构
-├── styles.css        macOS 风格深色样式
-├── vendor/           Floating UI（气泡定位）
+├── styles.css        浅色主题定制（在 Framework7 之上）
+├── vendor/           打包好的 Framework7 组件、样式与图标字体
+├── tools/            生成 vendor 的入口文件
 ├── js/
 │   ├── markdown.js   Markdown 渲染器（先转义再渲染，拦截危险链接）
 │   ├── expr.js       公式解析与求值
