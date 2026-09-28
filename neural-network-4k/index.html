@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neural Genesis 4K</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; width: min(100vw, 177.78vh); height: min(56.25vw, 100vh); }
+  #hint {
+    position: fixed; left: 16px; top: 14px; color: #9cc8ff; opacity: .75;
+    font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    transition: opacity 1.2s; pointer-events: none; white-space: pre;
+  }
+  #err { position: fixed; inset: 0; display: none; place-items: center; color: #f88; font: 16px system-ui; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hint"></div>
+<div id="err">此动画需要 WebGL2 支持 · WebGL2 is required</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ───────────────────────────── config ─────────────────────────────
+const qs = new URLSearchParams(location.search);
+const W = +qs.get('w') || 3840;          // 4K UHD by default
+const H = +qs.get('h') || 2160;
+const DURATION = 18;                     // seconds, loops
+const LAYERS = [12, 28, 40, 40, 28, 8];  // neurons per layer
+const NL = LAYERS.length;
+const SPACING = 7.5;
+const FOV = 45;
+const WINNER = 3;                        // index of the "predicted" output neuron
+const FREEZE = qs.has('t') ? +qs.get('t') : null;   // ?t=9.5 freezes a single frame
+
+// ───────────────────────────── renderer ─────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+if (!renderer.capabilities.isWebGL2) {
+  document.getElementById('err').style.display = 'grid';
+  throw new Error('WebGL2 required');
+}
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.getElementById('stage').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(FOV, W / H, 0.1, 500);
+const POINT_SCALE = H / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)));
+
+// deterministic RNG so every run is identical
+let seed = 1337;
+const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-9)) * Math.cos(6.2831853 * rand());
+
+// shared GLSL helpers
+const GLSL_WOBBLE = /* glsl */`
+  vec3 wob(vec3 p, float t) {
+    return 0.14 * vec3(sin(t * .70 + p.y * .45 + p.z * .20),
+                       sin(t * .90 + p.z * .50 + p.x * .10),
+                       sin(t * .80 + p.x * .30 + p.y * .30));
+  }`;
+
+// ───────────────────────────── background (nebula + stars) ─────────────────────────────
+const bgMat = new THREE.ShaderMaterial({
+  glslVersion: THREE.GLSL3,
+  depthTest: false, depthWrite: false,
+  uniforms: {
+    uTime: { value: 0 }, uWarm: { value: 0 }, uFinal: { value: 0 },
+    uCamWorld: { value: camera.matrixWorld },
+    uProjInv: { value: camera.projectionMatrixInverse },
+  },
+  vertexShader: /* glsl */`
+    out vec2 vNdc;
+    void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: /* glsl */`
+    precision highp float;
+    uniform float uTime, uWarm, uFinal;
+    uniform mat4 uCamWorld, uProjInv;
+    in vec2 vNdc;
+    out vec4 fragColor;
+    float hash13(vec3 p) { p = fract(p * .1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+    float noise(vec3 p) {
+      vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+      return mix(mix(mix(hash13(i), hash13(i + vec3(1,0,0)), f.x), mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x), mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+    float fbm(vec3 p) { float a = .5, s = 0.; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 11.7; a *= .5; } return s; }
+    float stars(vec3 d, float scale, float thr) {
+      vec3 p = d * scale, id = floor(p), f = fract(p) - .5;
+      float h = hash13(id);
+      vec3 off = (vec3(hash13(id + 1.3), hash13(id + 2.7), hash13(id + 5.1)) - .5) * .5;
+      float s = smoothstep(.16, 0., length(f - off)) * step(thr, h);
+      return s * (.55 + .45 * sin(uTime * (2. + h * 4.) + h * 90.));
+    }
+    void main() {
+      vec4 v = uProjInv * vec4(vNdc, 1., 1.); v /= v.w;
+      vec3 d = normalize(mat3(uCamWorld) * v.xyz);
+      vec3 q = d * 2.2 + vec3(0., 0., uTime * .015);
+      float n = fbm(q + fbm(q * 1.7) * 1.2);
+      float w = pow(fbm(d * 5. - vec3(uTime * .02)), 3.);
+      vec3 deep = vec3(.004, .006, .018);
+      vec3 violet = mix(vec3(.05, .018, .11), vec3(.11, .03, .05), uWarm);
+      vec3 cyan = mix(vec3(0., .07, .11), vec3(.10, .07, .02), uFinal);
+      vec3 col = mix(deep, violet, smoothstep(.35, .8, n)) + cyan * w * 1.6;
+      col += vec3(.75, .85, 1.) * (stars(d, 260., .985) * .9 + stars(d, 520., .992) * .5);
+      fragColor = vec4(col, 1.);
+    }`,
+});
+const bgGeo = new THREE.BufferGeometry();
+bgGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+const bg = new THREE.Mesh(bgGeo, bgMat);
+bg.frustumCulled = false; bg.renderOrder = -10;
+scene.add(bg);
+
+// ───────────────────────────── network topology ─────────────────────────────
+const layerX = l => (l - (NL - 1) / 2) * SPACING;
+const neurons = [];           // {pos: Vector3, layer, idx}
+const byLayer = [];
+LAYERS.forEach((n, l) => {
+  const R = 0.95 * Math.sqrt(n) + 0.4;
+  const arr = [];
+  for (let i = 0; i < n; i++) {
+    const r = R * Math.sqrt((i + 0.5) / n), a = i * 2.399963 + l * 0.7;
+    const nr = { pos: new THREE.Vector3(layerX(l), r * Math.sin(a), r * Math.cos(a)), layer: l, idx: i };
+    arr.push(nr); neurons.push(nr);
+  }
+  byLayer.push(arr);
+});
+
+// ───────────────────────────── neurons (GPU-driven point sprites) ─────────────────────────────
+const uniforms = {
+  uTime: { value: 0 }, uAssemble: { value: 0 }, uGrow: { value: 0 },
+  uFwd: { value: -9 }, uFwd2: { value: -9 }, uBwd: { value: 99 },
+  uFinal: { value: 0 }, uWinner: { value: 0 }, uSparks: { value: 0 },
+  uScale: { value: POINT_SCALE }, uNL: { value: NL },
+};
+{
+  const n = neurons.length;
+  const pos = new Float32Array(n * 3), start = new Float32Array(n * 3), info = new Float32Array(n * 4);
+  neurons.forEach((nr, i) => {
+    pos.set([nr.pos.x, nr.pos.y, nr.pos.z], i * 3);
+    const s = new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(22 + rand() * 30);
+    start.set([s.x, s.y, s.z], i * 3);
+    const size = nr.layer === 0 ? 0.65 : nr.layer === NL - 1 ? 1.0 : 0.7;
+    info.set([nr.layer, rand(), size, nr.layer === NL - 1 && nr.idx === WINNER ? 1 : 0], i * 4);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aStart', new THREE.BufferAttribute(start, 3));
+  g.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3, uniforms,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      uniform float uTime, uAssemble, uFwd, uFwd2, uBwd, uFinal, uWinner, uScale, uNL;
+      in vec3 aStart; in vec4 aInfo;       // layer, rand, size, isWinner
+      out vec3 vColor; out float vRing; out float vAlpha;
+      ${GLSL_WOBBLE}
+      void main() {
+        float L = aInfo.x, r = aInfo.y;
+        float p = clamp(uAssemble * 1.7 - r * .7, 0., 1.);
+        float e = 1. - pow(1. - p, 4.);
+        float ang = (1. - e) * (4. + r * 3.);
+        vec3 s = aStart;
+        s.xz = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * s.xz;
+        vec3 pos = mix(s, position, e) + wob(position, uTime) * e;
+
+        float strength = .35 + .65 * fract(r * 17.31);
+        float fw  = exp(-pow((L - uFwd)  * 2.4, 2.)) * strength;
+        float fw2 = exp(-pow((L - uFwd2) * 2.4, 2.)) * strength * uFinal;
+        float bw  = exp(-pow((L - uBwd)  * 2.4, 2.));
+        float trained = clamp(L + .5 - uBwd, 0., 1.);
+        float win = aInfo.w * uWinner;
+        float tw = pow(.5 + .5 * sin(uTime * 2.3 + r * 60.), 12.) * .6;
+
+        vec3 cold = mix(vec3(.10, .45, 1.), vec3(.55, .25, 1.), L / (uNL - 1.));
+        vec3 gold = mix(vec3(1., .62, .22), vec3(.25, .95, 1.), .5 + .5 * sin(L * 1.2 + uTime * .8));
+        vec3 base = mix(cold, gold, trained);
+        vec3 col = base * (.4 + tw)
+                 + vec3(.55, .85, 1.) * (fw + fw2) * 1.6
+                 + vec3(1., .3, .55) * bw * 1.7
+                 + vec3(1., .85, .5) * win * 2.2;
+        col = mix(vec3(.6, .85, 1.), col, e);   // in-flight sparks are white-blue
+
+        float size = aInfo.z * (mix(.35, 1., e) + (fw + fw2) * .9 + bw * .7 + win * 1.6);
+        vec4 mv = modelViewMatrix * vec4(pos, 1.);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = min(size * uScale / -mv.z, 900.);
+        vRing = max(fw + fw2, max(bw, win));
+        vAlpha = mix(.45, 1., e);
+        vColor = col;
+      }`,
+    fragmentShader: /* glsl */`
+      precision highp float;
+      in vec3 vColor; in float vRing; in float vAlpha;
+      out vec4 fragColor;
+      void main() {
+        vec2 c = gl_PointCoord * 2. - 1.;
+        float d = length(c);
+        if (d > 1.) discard;
+        float core = smoothstep(.26, .1, d);
+        float glow = exp(-d * d * 9.) * .45;
+        float ring = smoothstep(.045, 0., abs(d - .62)) * vRing * .9;
+        vec3 col = vColor * (glow + ring) + mix(vColor, vec3(1.), .5) * core;
+        fragColor = vec4(col * vAlpha * smoothstep(1., .75, d), 1.);
+      }`,
+  });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  pts.renderOrder = 2;
+  scene.add(pts);
+}
+
+// ───────────────────────────── synapses (camera-facing ribbons) ─────────────────────────────
+{
+  const conns = [];
+  for (let l = 0; l < NL - 1; l++) {
+    const next = byLayer[l + 1];
+    const k = Math.min(next.length, 14);
+    for (const a of byLayer[l]) {
+      const pool = next.slice();
+      for (let j = 0; j < k; j++) {
+        const b = pool.splice(Math.floor(rand() * pool.length), 1)[0];
+        conns.push([a.pos, b.pos, l, rand(), Math.max(-1, Math.min(1, gauss() * 0.5))]);
+      }
+    }
+  }
+  const n = conns.length;
+  const A = new Float32Array(n * 12), B = new Float32Array(n * 12), TS = new Float32Array(n * 8), INF = new Float32Array(n * 12);
+  const idx = new Uint32Array(n * 6);
+  conns.forEach(([a, b, l, r, w], i) => {
+    const corners = [[0, -1], [0, 1], [1, -1], [1, 1]];
+    corners.forEach(([t, s], c) => {
+      const v = i * 4 + c;
+      A.set([a.x, a.y, a.z], v * 3); B.set([b.x, b.y, b.z], v * 3);
+      TS.set([t, s], v * 2); INF.set([l, r, w], v * 3);
+    });
+    const o = i * 4;
+    idx.set([o, o + 2, o + 1, o + 1, o + 2, o + 3], i * 6);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(A, 3));   // unused but required
+  g.setAttribute('aA', new THREE.BufferAttribute(A, 3));
+  g.setAttribute('aB', new THREE.BufferAttribute(B, 3));
+  g.setAttribute('aTS', new THREE.BufferAttribute(TS, 2));
+  g.setAttribute('aInfo', new THREE.BufferAttribute(INF, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { ...uniforms, uWidth: { value: 0.032 } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: /* glsl */`
+      uniform float uTime, uGrow, uWidth;
+      in vec3 aA, aB; in vec2 aTS; in vec3 aInfo;   // info: layer, rand, weight
+      out float vT; out float vSide; out float vG; out vec3 vInfo;
+      ${GLSL_WOBBLE}
+      void main() {
+        float g = clamp(uGrow - aInfo.x - aInfo.y * .6, 0., 1.);
+        g = g * g * (3. - 2. * g);
+        float t = aTS.x * g;
+        vec3 a = aA + wob(aA, uTime), b = aB + wob(aB, uTime);
+        vec3 p = mix(a, b, t);
+        vec3 side = normalize(cross(normalize(b - a), normalize(cameraPosition - p)));
+        p += side * aTS.y * uWidth * (.55 + .9 * abs(aInfo.z));
+        vT = t; vSide = aTS.y; vG = g; vInfo = aInfo;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.);
+      }`,
+    fragmentShader: /* glsl */`
+      precision highp float;
+      uniform float uTime, uFwd, uFwd2, uBwd, uFinal, uSparks;
+      in float vT; in float vSide; in float vG; in vec3 vInfo;
+      out vec4 fragColor;
+      void main() {
+        if (vG < .001) discard;
+        float L = vInfo.x, r = vInfo.y, w = vInfo.z, aw = abs(w);
+        float edge = 1. - abs(vSide); edge *= edge;
+
+        float trained = 1. - smoothstep(L, L + 1., uBwd);
+        vec3 init = w > 0. ? vec3(.15, .6, 1.) : vec3(.6, .22, 1.);
+        vec3 gold = mix(vec3(1., .6, .2), vec3(.3, .95, 1.), step(0., w));
+        vec3 base = mix(init, gold, trained);
+        // training sharpens the weights: strong ones brighten, weak ones fade
+        float inten = mix(.018 + .05 * aw, aw > .45 ? .12 : .006, trained);
+
+        float pf  = exp(-pow((vT - (uFwd  - L)) * 7., 2.)) * (.35 + .65 * aw);
+        float pf2 = exp(-pow((vT - (uFwd2 - L)) * 7., 2.)) * (.35 + .65 * aw) * uFinal;
+        float pb  = exp(-pow((vT - (uBwd  - L)) * 7., 2.));
+        float s   = fract(uTime * (.25 + .35 * r) + r * 7.);
+        float ps  = exp(-pow((vT - s) * 40., 2.)) * uSparks * step(.55, fract(r * 23.17));
+        float tip = smoothstep(vG - .06, vG, vT) * (1. - step(.999, vG)) * 2.5;
+
+        vec3 col = base * inten
+                 + vec3(.55, .85, 1.) * (pf + pf2) * .9
+                 + vec3(1., .3, .5) * pb * .9
+                 + mix(vec3(.5, .85, 1.), vec3(1., .8, .45), trained) * ps * .9
+                 + vec3(.6, .9, 1.) * tip * .5;
+        fragColor = vec4(col * edge, 1.);
+      }`,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
+  scene.add(mesh);
+}
+
+// ───────────────────────────── input data stream ─────────────────────────────
+{
+  const n = 1800;
+  const from = new Float32Array(n * 3), to = new Float32Array(n * 3), info = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const target = byLayer[0][Math.floor(rand() * byLayer[0].length)].pos;
+    from.set([layerX(0) - 38 - rand() * 30, gauss() * 9, gauss() * 9], i * 3);
+    to.set([target.x, target.y, target.z], i * 3);
+    info.set([5.0 + rand() * 1.3, rand()], i * 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(from, 3));
+  g.setAttribute('aTo', new THREE.BufferAttribute(to, 3));
+  g.setAttribute('aInfo', new THREE.BufferAttribute(info, 2));
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3, uniforms,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      uniform float uTime, uScale;
+      in vec3 aTo; in vec2 aInfo;   // start time, rand
+      out float vA; out vec3 vC;
+      void main() {
+        float p = clamp((uTime - aInfo.x) / 1.7, 0., 1.);
+        float e = p * p * (3. - 2. * p);
+        vec3 pos = mix(position, aTo, e);
+        float ang = (1. - e) * 6.2831 * (1. + aInfo.y) + aInfo.y * 40.;
+        pos.yz += vec2(cos(ang), sin(ang)) * (1. - e) * 3. * aInfo.y;
+        vA = smoothstep(0., .08, p) * (1. - smoothstep(.9, 1., p));
+        vC = mix(vec3(.35, .75, 1.), vec3(1.), aInfo.y * aInfo.y);
+        vec4 mv = modelViewMatrix * vec4(pos, 1.);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (.22 + .22 * aInfo.y) * uScale / -mv.z * step(.001, vA);
+      }`,
+    fragmentShader: /* glsl */`
+      precision highp float;
+      in float vA; in vec3 vC;
+      out vec4 fragColor;
+      void main() {
+        float d = length(gl_PointCoord * 2. - 1.);
+        fragColor = vec4(vC * exp(-d * d * 6.) * vA, 1.);
+      }`,
+  });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  pts.renderOrder = 3;
+  scene.add(pts);
+}
+
+// ───────────────────────────── ambient dust ─────────────────────────────
+{
+  const n = 3000;
+  const p = new Float32Array(n * 3), r = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    p.set([(rand() - .5) * 140, (rand() - .5) * 70, (rand() - .5) * 90], i * 3);
+    r[i] = rand();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  g.setAttribute('aRand', new THREE.BufferAttribute(r, 1));
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3, uniforms,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      uniform float uTime, uScale, uFinal;
+      in float aRand;
+      out float vA; out vec3 vC;
+      void main() {
+        vec3 pos = position + vec3(sin(uTime * .2 + aRand * 20.) * 2., uTime * (.3 + aRand * .5), cos(uTime * .15 + aRand * 30.) * 2.);
+        pos.y = mod(pos.y + 35., 70.) - 35.;
+        vec4 mv = modelViewMatrix * vec4(pos, 1.);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (.08 + .12 * aRand) * uScale / -mv.z;
+        vA = (.25 + .5 * pow(.5 + .5 * sin(uTime * 1.7 + aRand * 80.), 6.)) * smoothstep(2., 12., -mv.z);
+        vC = mix(vec3(.3, .55, 1.), vec3(1., .75, .4), uFinal * step(.6, aRand));
+      }`,
+    fragmentShader: /* glsl */`
+      precision highp float;
+      in float vA; in vec3 vC;
+      out vec4 fragColor;
+      void main() {
+        float d = length(gl_PointCoord * 2. - 1.);
+        fragColor = vec4(vC * exp(-d * d * 5.) * vA, 1.);
+      }`,
+  });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  scene.add(pts);
+}
+
+// ───────────────────────────── captions (drawn into a texture, composited in the grade pass) ─────────────────────────────
+const hud = document.createElement('canvas');
+hud.width = W; hud.height = H;
+const hctx = hud.getContext('2d');
+const hudTex = new THREE.CanvasTexture(hud);
+hudTex.minFilter = THREE.LinearFilter; hudTex.generateMipmaps = false;
+const FONT = '"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
+const CAPTIONS = [
+  { a: 0.5,  b: 3.3,  center: true,  title: 'NEURAL  NETWORK', sub: '神经网络 · 从混沌中诞生' },
+  { a: 3.8,  b: 7.0,  center: false, title: '突触生长',  sub: 'Synapses form  ·  W ~ N(0, σ²)' },
+  { a: 7.3,  b: 12.5, center: false, title: '前向传播',  sub: 'Forward pass  ·  a⁽ˡ⁾ = σ( W⁽ˡ⁾ a⁽ˡ⁻¹⁾ + b⁽ˡ⁾ )' },
+  { a: 12.8, b: 15.4, center: false, title: '反向传播',  sub: 'Backpropagation  ·  W ← W − η ∂L/∂W' },
+  { a: 15.8, b: 18.5, center: true,  title: '智 能 涌 现', sub: 'Learning converged  ·  Intelligence emerges' },
+];
+let hudIdx = -2;
+function drawCaption(c) {
+  const s = H / 2160;
+  hctx.clearRect(0, 0, W, H);
+  if (!c) return;
+  hctx.textBaseline = 'alphabetic';
+  if ('letterSpacing' in hctx) hctx.letterSpacing = `${(c.center ? 28 : 10) * s}px`;
+  hctx.shadowColor = 'rgba(90,180,255,0.85)';
+  if (c.center) {
+    hctx.textAlign = 'center';
+    hctx.font = `200 ${190 * s}px ${FONT}`;
+    hctx.shadowBlur = 50 * s; hctx.fillStyle = '#eef7ff';
+    hctx.fillText(c.title, W / 2, H * 0.5 + 60 * s);
+    hctx.shadowBlur = 0;
+    const g = hctx.createLinearGradient(W / 2 - 600 * s, 0, W / 2 + 600 * s, 0);
+    g.addColorStop(0, 'rgba(120,200,255,0)'); g.addColorStop(.5, 'rgba(160,220,255,.9)'); g.addColorStop(1, 'rgba(120,200,255,0)');
+    hctx.fillStyle = g; hctx.fillRect(W / 2 - 600 * s, H * 0.5 + 120 * s, 1200 * s, 3 * s);
+    if ('letterSpacing' in hctx) hctx.letterSpacing = `${12 * s}px`;
+    hctx.font = `300 ${54 * s}px ${FONT}`; hctx.fillStyle = 'rgba(180,215,255,.9)';
+    hctx.fillText(c.sub, W / 2, H * 0.5 + 220 * s);
+  } else {
+    const x = 230 * s, y = H - 300 * s;
+    hctx.textAlign = 'left';
+    hctx.fillStyle = 'rgba(140,215,255,.95)'; hctx.fillRect(x, y - 150 * s, 6 * s, 220 * s);
+    hctx.font = `300 ${120 * s}px ${FONT}`;
+    hctx.shadowBlur = 36 * s; hctx.fillStyle = '#eef7ff';
+    hctx.fillText(c.title, x + 56 * s, y - 20 * s);
+    hctx.shadowBlur = 0;
+    if ('letterSpacing' in hctx) hctx.letterSpacing = `${4 * s}px`;
+    hctx.font = `400 ${48 * s}px ${FONT}`; hctx.fillStyle = 'rgba(175,210,255,.88)';
+    hctx.fillText(c.sub, x + 60 * s, y + 58 * s);
+  }
+  hudTex.needsUpdate = true;
+}
+
+// ───────────────────────────── post-processing ─────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(1);
+composer.setSize(W, H);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.8, 0.5, 0.35);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const grade = new ShaderPass(new THREE.ShaderMaterial({
+  glslVersion: THREE.GLSL3,
+  uniforms: {
+    tDiffuse: { value: null }, tHud: { value: hudTex },
+    uTime: { value: 0 }, uFade: { value: 0 }, uHud: { value: 0 }, uAberr: { value: .006 },
+    uRes: { value: new THREE.Vector2(W, H) },
+  },
+  vertexShader: /* glsl */`
+    out vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: /* glsl */`
+    precision highp float;
+    uniform sampler2D tDiffuse, tHud;
+    uniform float uTime, uFade, uHud, uAberr;
+    uniform vec2 uRes;
+    in vec2 vUv;
+    out vec4 fragColor;
+    float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+    void main() {
+      vec2 c = vUv - .5;
+      float ab = uAberr * dot(c, c) * 4.;
+      vec3 col = vec3(texture(tDiffuse, vUv - c * ab).r, texture(tDiffuse, vUv).g, texture(tDiffuse, vUv + c * ab).b);
+      float vig = smoothstep(1.05, .2, length(c * vec2(1.15, 1.)));
+      col *= mix(.5, 1., vig);
+      col += (hash(vUv * uRes + fract(uTime * 7.) * 500.) - .5) * .028;
+      vec2 hu = vUv + vec2((1. - uHud) * .006, 0.);
+      vec4 h = texture(tHud, hu);
+      float shade = 0.;                       // soft dark backing so captions stay legible over glow
+      for (int i = 0; i < 12; i++) {
+        float a = float(i) * .5236;
+        shade += texture(tHud, hu + vec2(cos(a), sin(a)) * vec2(.012, .02)).a;
+        shade += texture(tHud, hu + vec2(cos(a), sin(a)) * vec2(.028, .045)).a;
+      }
+      col *= 1. - clamp(shade / 12., 0., 1.) * .6 * uHud;
+      col = mix(col, h.rgb, h.a * uHud);
+      fragColor = vec4(col * uFade, 1.);
+    }`,
+}));
+composer.addPass(grade);
+
+// ───────────────────────────── camera choreography ─────────────────────────────
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const KEYS = [
+  { t: 0.0,  p: V(0, 2, 72),     l: V(0, 0, 0) },
+  { t: 3.6,  p: V(-16, 10, 44),  l: V(0, 0, 0) },
+  { t: 7.0,  p: V(-35, 5, 17),   l: V(-12, 0, 0) },
+  { t: 9.8,  p: V(-6, 15, 24),   l: V(2, 0, 0) },
+  { t: 12.4, p: V(31, 4, 16),    l: V(12, 0, 0) },
+  { t: 15.2, p: V(8, -13, 34),   l: V(0, 0, 0) },
+  { t: 18.0, p: V(0, 3, 64),     l: V(0, 0, 0) },
+];
+function cr(p0, p1, p2, p3, u, out) {
+  const u2 = u * u, u3 = u2 * u;
+  return out.set(0, 0, 0)
+    .addScaledVector(p0, -0.5 * u3 + u2 - 0.5 * u)
+    .addScaledVector(p1, 1.5 * u3 - 2.5 * u2 + 1)
+    .addScaledVector(p2, -1.5 * u3 + 2 * u2 + 0.5 * u)
+    .addScaledVector(p3, 0.5 * u3 - 0.5 * u2);
+}
+const tmpP = new THREE.Vector3(), tmpL = new THREE.Vector3();
+function placeCamera(t) {
+  let i = 0;
+  while (i < KEYS.length - 2 && t > KEYS[i + 1].t) i++;
+  const k0 = KEYS[Math.max(0, i - 1)], k1 = KEYS[i], k2 = KEYS[i + 1], k3 = KEYS[Math.min(KEYS.length - 1, i + 2)];
+  let u = Math.min(1, Math.max(0, (t - k1.t) / (k2.t - k1.t)));
+  cr(k0.p, k1.p, k2.p, k3.p, u, tmpP);
+  cr(k0.l, k1.l, k2.l, k3.l, u, tmpL);
+  tmpP.x += Math.sin(t * 0.9) * 0.35; tmpP.y += Math.sin(t * 1.3 + 1) * 0.25;
+  camera.position.copy(tmpP);
+  camera.up.set(Math.sin(t * 0.35) * 0.06, 1, 0).normalize();
+  camera.lookAt(tmpL);
+}
+
+// ───────────────────────────── timeline ─────────────────────────────
+const clamp01 = x => Math.min(1, Math.max(0, x));
+const lin = (a, b, x) => clamp01((x - a) / (b - a));
+const sm = (a, b, x) => { const t = lin(a, b, x); return t * t * (3 - 2 * t); };
+
+function update(t) {
+  const U = uniforms;
+  U.uTime.value = t;
+  U.uAssemble.value = lin(0.2, 4.2, t);
+  U.uGrow.value = lin(3.4, 7.4, t) * (NL - 0.4);
+  U.uFwd.value = t < 7.2 ? -9 : -0.6 + (t - 7.2) / 5.2 * (NL + 0.8);
+  U.uBwd.value = t < 12.8 ? 99 : (NL - 0.4) - (t - 12.8) / 2.6 * (NL + 0.4);
+  U.uFinal.value = sm(15.3, 16.3, t);
+  U.uFwd2.value = t < 15.3 ? -9 : ((t - 15.3) * 4.5) % (NL + 1.5) - 1.0;
+  U.uWinner.value = sm(11.2, 11.8, t) * (1 - sm(12.8, 13.4, t)) + U.uFinal.value * 0.4;
+  U.uSparks.value = sm(6.5, 8.0, t) * 0.55 + U.uFinal.value * 0.6;
+
+  bgMat.uniforms.uTime.value = t;
+  bgMat.uniforms.uWarm.value = sm(12.6, 13.4, t) * (1 - sm(15.0, 16.0, t));
+  bgMat.uniforms.uFinal.value = U.uFinal.value;
+
+  bloom.strength = 0.75 + 0.2 * U.uFinal.value + 0.25 * Math.exp(-Math.pow((t - 12.9) * 3, 2));
+  const gu = grade.uniforms;
+  gu.uTime.value = t;
+  gu.uFade.value = sm(0, 0.9, t) * (1 - sm(17.1, 18, t));
+  gu.uAberr.value = 0.006 + 0.03 * Math.exp(-Math.pow((t - 12.9) * 3, 2)) + 0.012 * Math.exp(-Math.pow((t - 11.5) * 4, 2));
+
+  // captions
+  const ci = CAPTIONS.findIndex(c => t >= c.a && t < c.b);
+  if (ci !== hudIdx) { hudIdx = ci; drawCaption(CAPTIONS[ci]); }
+  const c = CAPTIONS[ci];
+  gu.uHud.value = c ? sm(c.a, c.a + 0.6, t) * (1 - sm(c.b - 0.5, c.b, t)) : 0;
+
+  placeCamera(t);
+}
+
+// ───────────────────────────── loop, restart & 4K recording ─────────────────────────────
+const hint = document.getElementById('hint');
+hint.textContent = `${W}×${H} · ${DURATION}s loop · WebGL2 / GLSL ES 3.00\n点击重播 · R 录制 WebM · F 全屏 · ?w=1920&h=1080 低配预览`;
+setTimeout(() => (hint.style.opacity = 0), 4500);
+
+let t0 = performance.now();
+let recorder = null;
+function restart() { t0 = performance.now(); }
+
+function startRecording() {
+  if (recorder) return;
+  const stream = renderer.domElement.captureStream(60);
+  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 80e6 });
+  const chunks = [];
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+    a.download = `neural-network-${W}x${H}.webm`;
+    a.click();
+    recorder = null;
+  };
+  restart();
+  recorder.start();
+  hint.textContent = '● REC'; hint.style.opacity = 1;
+}
+
+addEventListener('click', restart);
+addEventListener('keydown', e => {
+  if (e.key === 'r' || e.key === 'R') startRecording();
+  if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+});
+
+function frame(now) {
+  let t = FREEZE ?? (now - t0) / 1000;
+  if (recorder && t >= DURATION) { recorder.stop(); hint.style.opacity = 0; }
+  t %= DURATION;
+  update(t);
+  composer.render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
