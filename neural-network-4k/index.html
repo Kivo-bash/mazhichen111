@@ -40,33 +40,33 @@ const qs = new URLSearchParams(location.search);
 const W = +qs.get('w') || 3840;          // 4K UHD by default
 const H = +qs.get('h') || 2160;
 const S = H / 2160;                      // 2D overlay scale (designed at 4K)
-const DURATION = 20;                     // seconds, loops
+const DURATION = 45;                     // seconds, loops
 const HIDDEN = [32, 40, 40, 28];
 const LAYERS = [144, ...HIDDEN, 10];     // 12×12 pixel input → hidden → 10 classes
 const NL = LAYERS.length;
 const SPACING = 7.5;
 const FOV = 45;
-const WINNER = 3;                        // the digit the network recognises
 const FREEZE = qs.has('t') ? +qs.get('t') : null;   // ?t=9.5 freezes a single frame
 
-// the handwritten input digit
-const DIGIT = [
-  '............',
-  '...######...',
-  '..########..',
-  '..##....###.',
-  '........###.',
-  '.....#####..',
-  '.....#####..',
-  '........###.',
-  '..##....###.',
-  '..########..',
-  '...######...',
-  '............',
+// handwritten input digits (12×12)
+const DIGITS = {
+  3: ['............', '...######...', '..########..', '..##....###.', '........###.', '.....#####..',
+      '.....#####..', '........###.', '..##....###.', '..########..', '...######...', '............'],
+  7: ['............', '..########..', '..########..', '.......###..', '......###...', '......##....',
+      '.....###....', '.....##.....', '....###.....', '....##......', '....##......', '............'],
+  0: ['............', '....####....', '...######...', '..###..###..', '..##....##..', '..##....##..',
+      '..##....##..', '..##....##..', '..###..###..', '...######...', '....####....', '............'],
+};
+// Four "slots" blended on the GPU through uSelIn / uSelOut:
+//   0: first (untrained) look at "3"   1: trained on "3"   2: unseen "7"   3: unseen "0"
+const SLOT_DIGIT = [3, 3, 7, 0];
+const PROBS = [
+  [0.03, 0.05, 0.08, 0.41, 0.06, 0.12, 0.04, 0.09, 0.07, 0.05],
+  [0.002, 0.003, 0.006, 0.981, 0.001, 0.004, 0.001, 0.001, 0.0005, 0.0005],
+  [0.002, 0.011, 0.004, 0.006, 0.003, 0.001, 0.001, 0.964, 0.002, 0.006],
+  [0.947, 0.001, 0.004, 0.002, 0.003, 0.009, 0.021, 0.002, 0.008, 0.003],
 ];
-// softmax outputs: first (untrained) pass, then after training
-const P1 = [0.03, 0.05, 0.08, 0.41, 0.06, 0.12, 0.04, 0.09, 0.07, 0.05];
-const P2 = [0.002, 0.003, 0.006, 0.981, 0.001, 0.004, 0.001, 0.001, 0.0005, 0.0005];
+const SLOT_WIN = SLOT_DIGIT;             // the correct (and predicted) class per slot
 
 // ───────────────────────────── renderer ─────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -156,27 +156,32 @@ scene.add(bg);
 const layerX = l => (l - (NL - 1) / 2) * SPACING;
 const OUT_X = layerX(NL - 1);
 const PIX = 0.75;                         // input pixel pitch
-const neurons = [];                       // {pos, layer, idx, v1, v2}
+const neurons = [];                       // {pos, layer, idx, vals[4], win[4]}
 const byLayer = [];
+const pixel = (d, r, c) => {
+  const g = DIGITS[d];
+  if (g[r][c] === '#') return 0.85 + rand() * 0.15;
+  return [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dr, dc]) => g[r + dr]?.[c + dc] === '#') ? 0.22 : 0;
+};
 LAYERS.forEach((n, l) => {
   const arr = [];
   for (let i = 0; i < n; i++) {
-    let pos, v1 = 1, v2 = 1;
+    let pos, vals = [1, 1, 1, 1], win = [0, 0, 0, 0];
     if (l === 0) {                        // 12×12 image grid, readable from the -x side
       const r = Math.floor(i / 12), c = i % 12;
       pos = new THREE.Vector3(layerX(0), (5.5 - r) * PIX, (c - 5.5) * PIX);
-      const on = DIGIT[r][c] === '#';
-      const near = !on && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dr, dc]) => DIGIT[r + dr]?.[c + dc] === '#');
-      v1 = v2 = on ? 0.85 + rand() * 0.15 : near ? 0.22 : 0;
+      const p3 = pixel(3, r, c);
+      vals = [p3, p3, pixel(7, r, c), pixel(0, r, c)];
     } else if (l === NL - 1) {            // output column, one neuron per digit class
       pos = new THREE.Vector3(OUT_X, (4.5 - i) * 1.5, 0);
-      v1 = P1[i]; v2 = P2[i];
+      vals = PROBS.map(P => P[i]);
+      win = SLOT_WIN.map(w => (w === i ? 1 : 0));
     } else {                              // hidden layers: Fibonacci discs
       const R = 0.95 * Math.sqrt(n) + 0.4;
       const r = R * Math.sqrt((i + 0.5) / n), a = i * 2.399963 + l * 0.7;
       pos = new THREE.Vector3(layerX(l), r * Math.sin(a), r * Math.cos(a));
     }
-    const nr = { pos, layer: l, idx: i, v1, v2 };
+    const nr = { pos, layer: l, idx: i, vals, win };
     arr.push(nr); neurons.push(nr);
   }
   byLayer.push(arr);
@@ -185,34 +190,38 @@ const layerTop = byLayer.map(a => Math.max(...a.map(n => n.pos.y)));
 
 // ───────────────────────────── neurons (GPU-driven point sprites) ─────────────────────────────
 const uniforms = {
-  uTime: { value: 0 }, uAssemble: { value: 0 }, uGrow: { value: 0 }, uInput: { value: 0 },
-  uFwd: { value: -9 }, uFwd2: { value: -9 }, uBwd: { value: 99 },
+  uTime: { value: 0 }, uAssemble: { value: 0 }, uGrow: { value: 0 }, uInput: { value: 0 }, uBoost: { value: 0 },
+  uFwd: { value: -9 }, uFwd2: { value: -9 }, uBwd: { value: 99 }, uBwdT: { value: 99 }, uPulse: { value: 0 },
+  uSelIn: { value: new THREE.Vector4(1, 0, 0, 0) }, uSelOut: { value: new THREE.Vector4(1, 0, 0, 0) },
   uFinal: { value: 0 }, uWinner: { value: 0 }, uSparks: { value: 0 }, uBars: { value: 0 },
   uScale: { value: POINT_SCALE }, uNL: { value: NL }, uOutX: { value: OUT_X },
 };
 {
   const n = neurons.length;
-  const pos = new Float32Array(n * 3), start = new Float32Array(n * 3), info = new Float32Array(n * 4), val = new Float32Array(n * 2);
+  const pos = new Float32Array(n * 3), start = new Float32Array(n * 3), info = new Float32Array(n * 4), vals = new Float32Array(n * 4), win = new Float32Array(n * 4);
   neurons.forEach((nr, i) => {
     pos.set([nr.pos.x, nr.pos.y, nr.pos.z], i * 3);
     const s = new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(22 + rand() * 30);
     start.set([s.x, s.y, s.z], i * 3);
     const size = nr.layer === 0 ? 0.62 : nr.layer === NL - 1 ? 0.95 : 0.7;
-    info.set([nr.layer, rand(), size, nr.layer === NL - 1 && nr.idx === WINNER ? 1 : 0], i * 4);
-    val.set([nr.v1, nr.v2], i * 2);
+    info.set([nr.layer, rand(), size, 0], i * 4);
+    vals.set(nr.vals, i * 4); win.set(nr.win, i * 4);
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('aStart', new THREE.BufferAttribute(start, 3));
   g.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
-  g.setAttribute('aVal', new THREE.BufferAttribute(val, 2));
+  g.setAttribute('aVals', new THREE.BufferAttribute(vals, 4));
+  g.setAttribute('aWin', new THREE.BufferAttribute(win, 4));
   const m = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3, uniforms,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */`
-      uniform float uTime, uAssemble, uInput, uFwd, uFwd2, uBwd, uFinal, uWinner, uScale, uNL;
-      in vec3 aStart; in vec4 aInfo;       // layer, rand, size, isWinner
-      in vec2 aVal;                        // pixel value (input) / class probability (output), before → after training
+      uniform float uTime, uAssemble, uInput, uBoost, uFwd, uFwd2, uBwd, uBwdT, uPulse, uWinner, uScale, uNL;
+      uniform vec4 uSelIn, uSelOut;
+      in vec3 aStart; in vec4 aInfo;       // layer, rand, size, -
+      in vec4 aVals;                       // per slot: pixel value (input) / class probability (output)
+      in vec4 aWin;                        // per slot: is this output neuron the correct class
       out vec3 vColor; out float vRing; out float vAlpha;
       ${GLSL_WOBBLE}
       void main() {
@@ -225,28 +234,28 @@ const uniforms = {
         vec3 pos = mix(s, position, e) + wob(position, uTime) * e;
 
         float isIn = 1. - step(.5, L), isOut = step(uNL - 1.5, L);
-        float val = mix(aVal.x, aVal.y, uFinal);
+        float val = dot(aVals, isOut > .5 ? uSelOut : uSelIn);
         float gain = mix(1., (.08 + val) * .45, isIn) * mix(1., .2 + .8 * sqrt(val), isOut);
         float strength = mix(.35 + .65 * fract(r * 17.31), 1., isIn + isOut);
         float fw  = exp(-pow((L - uFwd)  * 2.4, 2.)) * strength * gain;
-        float fw2 = exp(-pow((L - uFwd2) * 2.4, 2.)) * strength * gain * uFinal;
+        float fw2 = exp(-pow((L - uFwd2) * 2.4, 2.)) * strength * gain * uPulse;
         float bw  = exp(-pow((L - uBwd)  * 2.4, 2.));
-        float trained = clamp(L + .5 - uBwd, 0., 1.);
-        float win = aInfo.w * uWinner;
+        float trained = clamp(L + .5 - uBwdT, 0., 1.);
+        float win = dot(aWin, uSelOut) * uWinner;
         float tw = pow(.5 + .5 * sin(uTime * 2.3 + r * 60.), 12.) * .6;
 
         vec3 cold = mix(vec3(.10, .45, 1.), vec3(.55, .25, 1.), L / (uNL - 1.));
         vec3 gold = mix(vec3(1., .62, .22), vec3(.25, .95, 1.), .5 + .5 * sin(L * 1.2 + uTime * .8));
         vec3 base = mix(cold, gold, trained);
-        base *= mix(1., .3, isIn * uInput);                      // unlit pixels dim once the image lands
+        base *= mix(1., .3, isIn * uInput) * (1. - .55 * uBoost * (1. - isIn));   // spotlight the input while a new digit lands                      // unlit pixels dim once the image lands
         vec3 col = base * (.4 + tw)
-                 + vec3(.8, .95, 1.) * isIn * aVal.x * uInput * .75 // the digit itself
+                 + vec3(.8, .95, 1.) * isIn * val * uInput * (.75 + 2.2 * uBoost)   // the digit itself
                  + vec3(.55, .85, 1.) * (fw + fw2) * 1.6
                  + vec3(1., .3, .55) * bw * 1.7
                  + vec3(1., .85, .5) * win * 2.2;
         col = mix(vec3(.6, .85, 1.), col, e);                    // in-flight sparks are white-blue
 
-        float size = aInfo.z * (mix(.35, 1., e) + (fw + fw2) * .9 + bw * .7 + win * 1.6 + isIn * aVal.x * uInput * .2);
+        float size = aInfo.z * (mix(.35, 1., e) + (fw + fw2) * .9 + bw * .7 + win * 1.6 + isIn * val * uInput * .2);
         vec4 mv = modelViewMatrix * vec4(pos, 1.);
         gl_Position = projectionMatrix * mv;
         gl_PointSize = min(size * uScale / -mv.z, 900.);
@@ -287,20 +296,21 @@ let SYNAPSES = 0;
       for (let j = 0; j < k; j++) {
         const b = pool.splice(Math.floor(rand() * pool.length), 1)[0];
         // how much signal this synapse carries: dark pixels send nothing, strong classes pull harder
-        const carry = l === 0 ? Math.max(a.v1, 0.04) : l === NL - 2 ? 0.2 + 0.8 * Math.sqrt(b.v1) : 1;
+        const carry = l === 0 ? a.vals.map(v => Math.max(v, 0.04))
+          : l === NL - 2 ? b.vals.map(p => 0.2 + 0.8 * Math.sqrt(p)) : [1, 1, 1, 1];
         conns.push([a.pos, b.pos, l, rand(), Math.max(-1, Math.min(1, gauss() * 0.5)), carry]);
       }
     }
   }
   SYNAPSES = conns.length;
   const n = conns.length;
-  const A = new Float32Array(n * 12), B = new Float32Array(n * 12), TS = new Float32Array(n * 8), INF = new Float32Array(n * 16);
+  const A = new Float32Array(n * 12), B = new Float32Array(n * 12), TS = new Float32Array(n * 8), INF = new Float32Array(n * 12), CAR = new Float32Array(n * 16);
   const idx = new Uint32Array(n * 6);
   conns.forEach(([a, b, l, r, w, carry], i) => {
     [[0, -1], [0, 1], [1, -1], [1, 1]].forEach(([t, s], c) => {
       const v = i * 4 + c;
       A.set([a.x, a.y, a.z], v * 3); B.set([b.x, b.y, b.z], v * 3);
-      TS.set([t, s], v * 2); INF.set([l, r, w, carry], v * 4);
+      TS.set([t, s], v * 2); INF.set([l, r, w], v * 3); CAR.set(carry, v * 4);
     });
     const o = i * 4;
     idx.set([o, o + 2, o + 1, o + 1, o + 2, o + 3], i * 6);
@@ -310,7 +320,8 @@ let SYNAPSES = 0;
   g.setAttribute('aA', new THREE.BufferAttribute(A, 3));
   g.setAttribute('aB', new THREE.BufferAttribute(B, 3));
   g.setAttribute('aTS', new THREE.BufferAttribute(TS, 2));
-  g.setAttribute('aInfo', new THREE.BufferAttribute(INF, 4));
+  g.setAttribute('aInfo', new THREE.BufferAttribute(INF, 3));
+  g.setAttribute('aCarry', new THREE.BufferAttribute(CAR, 4));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   const m = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
@@ -318,7 +329,9 @@ let SYNAPSES = 0;
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     vertexShader: /* glsl */`
       uniform float uTime, uGrow, uWidth;
-      in vec3 aA, aB; in vec2 aTS; in vec4 aInfo;   // info: layer, rand, weight, carry
+      uniform vec4 uSelIn, uSelOut;
+      in vec3 aA, aB; in vec2 aTS; in vec3 aInfo;   // info: layer, rand, weight
+      in vec4 aCarry;                               // per slot: how much signal this synapse carries
       out float vT; out float vSide; out float vG; out vec4 vInfo;
       ${GLSL_WOBBLE}
       void main() {
@@ -329,12 +342,13 @@ let SYNAPSES = 0;
         vec3 p = mix(a, b, t);
         vec3 side = normalize(cross(normalize(b - a), normalize(cameraPosition - p)));
         p += side * aTS.y * uWidth * (.55 + .9 * abs(aInfo.z));
-        vT = t; vSide = aTS.y; vG = g; vInfo = aInfo;
+        vT = t; vSide = aTS.y; vG = g;
+        vInfo = vec4(aInfo, dot(aCarry, aInfo.x < .5 ? uSelIn : uSelOut));
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.);
       }`,
     fragmentShader: /* glsl */`
       precision highp float;
-      uniform float uTime, uFwd, uFwd2, uBwd, uFinal, uSparks;
+      uniform float uTime, uFwd, uFwd2, uBwd, uBwdT, uPulse, uSparks;
       in float vT; in float vSide; in float vG; in vec4 vInfo;
       out vec4 fragColor;
       void main() {
@@ -342,7 +356,7 @@ let SYNAPSES = 0;
         float L = vInfo.x, r = vInfo.y, w = vInfo.z, aw = abs(w), carry = vInfo.w;
         float edge = 1. - abs(vSide); edge *= edge;
 
-        float trained = 1. - smoothstep(L, L + 1., uBwd);
+        float trained = 1. - smoothstep(L, L + 1., uBwdT);
         vec3 init = w > 0. ? vec3(.15, .6, 1.) : vec3(.6, .22, 1.);
         vec3 gold = mix(vec3(1., .6, .2), vec3(.3, .95, 1.), step(0., w));
         vec3 base = mix(init, gold, trained);
@@ -350,7 +364,7 @@ let SYNAPSES = 0;
         float inten = mix(.018 + .05 * aw, aw > .45 ? .12 : .006, trained);
 
         float pf  = exp(-pow((vT - (uFwd  - L)) * 7., 2.)) * (.35 + .65 * aw) * carry;
-        float pf2 = exp(-pow((vT - (uFwd2 - L)) * 7., 2.)) * (.35 + .65 * aw) * carry * uFinal;
+        float pf2 = exp(-pow((vT - (uFwd2 - L)) * 7., 2.)) * (.35 + .65 * aw) * carry * uPulse;
         float pb  = exp(-pow((vT - (uBwd  - L)) * 7., 2.));
         float s   = fract(uTime * (.25 + .35 * r) + r * 7.);
         float ps  = exp(-pow((vT - s) * 40., 2.)) * uSparks * step(.55, fract(r * 23.17)) * carry;
@@ -370,85 +384,90 @@ let SYNAPSES = 0;
   scene.add(mesh);
 }
 
-// ───────────────────────────── input data stream (pixels flying onto the digit) ─────────────────────────────
-{
-  const lit = byLayer[0].filter(n => n.v1 > 0.5);
-  const n = 1800;
+// ───────────────────────────── input data streams (pixels flying onto each digit) ─────────────────────────────
+function dataStream(slot, n, tStart, tSpread) {
+  const lit = byLayer[0].filter(nr => nr.vals[slot] > 0.5);
   const from = new Float32Array(n * 3), to = new Float32Array(n * 3), info = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
     const target = lit[Math.floor(rand() * lit.length)].pos;
     from.set([layerX(0) - 38 - rand() * 30, gauss() * 9, gauss() * 9], i * 3);
     to.set([target.x, target.y, target.z], i * 3);
-    info.set([5.0 + rand() * 1.3, rand()], i * 2);
+    info.set([tStart + rand() * tSpread, rand()], i * 2);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(from, 3));
   g.setAttribute('aTo', new THREE.BufferAttribute(to, 3));
   g.setAttribute('aInfo', new THREE.BufferAttribute(info, 2));
-  const m = new THREE.ShaderMaterial({
-    glslVersion: THREE.GLSL3, uniforms,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: /* glsl */`
-      uniform float uTime, uScale;
-      in vec3 aTo; in vec2 aInfo;   // start time, rand
-      out float vA; out vec3 vC;
-      void main() {
-        float p = clamp((uTime - aInfo.x) / 1.7, 0., 1.);
-        float e = p * p * (3. - 2. * p);
-        vec3 pos = mix(position, aTo, e);
-        float ang = (1. - e) * 6.2831 * (1. + aInfo.y) + aInfo.y * 40.;
-        pos.yz += vec2(cos(ang), sin(ang)) * (1. - e) * 3. * aInfo.y;
-        vec4 mv = modelViewMatrix * vec4(pos, 1.);
-        gl_Position = projectionMatrix * mv;
-        vA = smoothstep(0., .08, p) * (1. - smoothstep(.9, 1., p)) * smoothstep(4., 14., -mv.z);  // don't blind the camera
-        vC = mix(vec3(.35, .75, 1.), vec3(1.), aInfo.y * aInfo.y);
-        gl_PointSize = (.16 + .16 * aInfo.y) * uScale / -mv.z * step(.001, vA);
-      }`,
-    fragmentShader: /* glsl */`
-      precision highp float;
-      in float vA; in vec3 vC;
-      out vec4 fragColor;
-      void main() {
-        float d = length(gl_PointCoord * 2. - 1.);
-        fragColor = vec4(vC * exp(-d * d * 6.) * vA, 1.);
-      }`,
-  });
-  const pts = new THREE.Points(g, m);
+  const pts = new THREE.Points(g, streamMat);
   pts.frustumCulled = false;
   pts.renderOrder = 3;
   scene.add(pts);
 }
+const streamMat = new THREE.ShaderMaterial({
+  glslVersion: THREE.GLSL3, uniforms,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */`
+    uniform float uTime, uScale;
+    in vec3 aTo; in vec2 aInfo;   // start time, rand
+    out float vA; out vec3 vC;
+    void main() {
+      float p = clamp((uTime - aInfo.x) / 1.7, 0., 1.);
+      float e = p * p * (3. - 2. * p);
+      vec3 pos = mix(position, aTo, e);
+      float ang = (1. - e) * 6.2831 * (1. + aInfo.y) + aInfo.y * 40.;
+      pos.yz += vec2(cos(ang), sin(ang)) * (1. - e) * 3. * aInfo.y;
+      vec4 mv = modelViewMatrix * vec4(pos, 1.);
+      gl_Position = projectionMatrix * mv;
+      vA = smoothstep(0., .08, p) * (1. - smoothstep(.9, 1., p)) * smoothstep(4., 14., -mv.z);  // don't blind the camera
+      vC = mix(vec3(.35, .75, 1.), vec3(1.), aInfo.y * aInfo.y);
+      gl_PointSize = (.16 + .16 * aInfo.y) * uScale / -mv.z * step(.001, vA);
+    }`,
+  fragmentShader: /* glsl */`
+    precision highp float;
+    in float vA; in vec3 vC;
+    out vec4 fragColor;
+    void main() {
+      float d = length(gl_PointCoord * 2. - 1.);
+      fragColor = vec4(vC * exp(-d * d * 6.) * vA, 1.);
+    }`,
+});
+dataStream(0, 1800, 5.0, 1.3);   // "3"
+dataStream(2, 1000, 25.2, 0.9);  // unseen "7"
+dataStream(3, 1000, 30.8, 0.9);  // unseen "0"
 
 // ───────────────────────────── softmax probability bars ─────────────────────────────
 const BAR_X = OUT_X + 2.0;
 {
-  const pos = [], bar = [], idx = [];
+  const pos = [], barY = [], probs = [], wins = [], idx = [];
   byLayer[NL - 1].forEach((nr, i) => {
     const o = i * 4;
     for (const [x, y] of [[0, -.5], [1, -.5], [0, .5], [1, .5]]) {
       pos.push(x, y, 0);
-      bar.push(nr.pos.y, P1[i], P2[i], i === WINNER ? 1 : 0);
+      barY.push(nr.pos.y); probs.push(...nr.vals); wins.push(...nr.win);
     }
     idx.push(o, o + 1, o + 2, o + 2, o + 1, o + 3);
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aBar', new THREE.Float32BufferAttribute(bar, 4));
+  g.setAttribute('aY', new THREE.Float32BufferAttribute(barY, 1));
+  g.setAttribute('aProbs', new THREE.Float32BufferAttribute(probs, 4));
+  g.setAttribute('aWin', new THREE.Float32BufferAttribute(wins, 4));
   g.setIndex(idx);
   const m = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
     uniforms: { ...uniforms, uBarX: { value: BAR_X } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     vertexShader: /* glsl */`
-      uniform float uTime, uBars, uFinal, uBarX, uOutX;
-      in vec4 aBar;                      // y, p before, p after, isWinner
+      uniform float uTime, uBars, uBarX, uOutX;
+      uniform vec4 uSelOut;
+      in float aY; in vec4 aProbs, aWin;  // bar row, per-slot probability, per-slot correct class
       out vec2 vUv; out float vW; out float vLen;
       ${GLSL_WOBBLE}
       void main() {
-        float len = max(mix(aBar.y, aBar.z, uFinal) * 9. * uBars, .05);
-        vec3 p = vec3(uBarX + position.x * len, aBar.x + position.y * .5, 0.);
-        p += wob(vec3(uOutX, aBar.x, 0.), uTime);
-        vUv = vec2(position.x, position.y + .5); vW = aBar.w; vLen = len;
+        float len = max(dot(aProbs, uSelOut) * 9. * uBars, .05);
+        vec3 p = vec3(uBarX + position.x * len, aY + position.y * .5, 0.);
+        p += wob(vec3(uOutX, aY, 0.), uTime);
+        vUv = vec2(position.x, position.y + .5); vW = dot(aWin, uSelOut); vLen = len;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.);
       }`,
     fragmentShader: /* glsl */`
@@ -562,8 +581,11 @@ const CAPTIONS = [
   { a: 0.5,  b: 3.3,  center: true,  title: 'NEURAL  NETWORK', sub: '神经网络 · 从混沌中诞生' },
   { a: 3.8,  b: 7.7,  center: false, title: '突触生长',  sub: `${NL} 层 · ${SYNAPSES.toLocaleString()} 条突触 · ${PARAMS.toLocaleString()} 个参数 · W ~ N(0, σ²)` },
   { a: 7.9,  b: 12.9, center: false, title: '前向传播',  sub: 'Forward pass  ·  a⁽ˡ⁾ = ReLU( W⁽ˡ⁾ a⁽ˡ⁻¹⁾ + b⁽ˡ⁾ )  ·  首次预测 “3” 仅 41%' },
-  { a: 13.2, b: 16.4, center: false, title: '反向传播',  sub: 'Backpropagation  ·  ∂L/∂W = δ⁽ˡ⁾ a⁽ˡ⁻¹⁾ᵀ  ·  W ← W − η ∂L/∂W' },
-  { a: 16.7, b: 20.5, center: true,  title: '智 能 涌 现', sub: '预测 “3” · 置信度 41% → 98.1%' },
+  { a: 13.2, b: 16.2, center: false, title: '反向传播',  sub: 'Backpropagation  ·  ∂L/∂W = δ⁽ˡ⁾ a⁽ˡ⁻¹⁾ᵀ  ·  W ← W − η ∂L/∂W' },
+  { a: 16.4, b: 26.0, center: false, title: '反复训练',  sub: 'Training loop  ·  前向 → 损失 → 反向 → 更新  ·  50 epochs  ·  “3” 41% → 98.1%' },
+  { a: 26.4, b: 32.0, center: false, title: '泛化测试',  sub: 'Generalization  ·  从未见过的手写 “7”  →  预测 7 · 96.4%' },
+  { a: 32.2, b: 37.3, center: false, title: '特征而非记忆', sub: 'Unseen “0”  →  预测 0 · 94.7%  ·  网络学到的是笔画特征' },
+  { a: 37.7, b: 45.5, center: true,  title: '智 能 涌 现', sub: '3 · 7 · 0   —   98.1% · 96.4% · 94.7%' },
 ];
 let hudIdx = -2;
 function drawCaption(c) {
@@ -606,7 +628,8 @@ panel.width = PW; panel.height = PH;
 const pctx = panel.getContext('2d');
 const panelTex = new THREE.CanvasTexture(panel);
 panelTex.minFilter = THREE.LinearFilter; panelTex.generateMipmaps = false;
-const panelRect = new THREE.Vector4(1 - (PW + 170 * S) / W, 1 - (PH + 150 * S) / H, PW / W, PH / H);
+const panelRect = new THREE.Vector4(0, 1 - (PH + 150 * S) / H, PW / W, PH / H);
+const PANEL_RIGHT = 1 - (PW + 170 * S) / W, PANEL_LEFT = 170 * S / W;
 
 const NEURON = { xs: [0.82, 0.15, 0.64, 0.47], ws: [0.61, -0.34, 0.92, 0.48], b: 0.12 };
 const lossAt = e => 0.035 + 2.27 * Math.exp(-e / 7) + 0.05 * Math.sin(e * 1.7) * Math.exp(-e / 15);
@@ -664,7 +687,7 @@ function drawNeuronPanel(u) {
   panelTex.needsUpdate = true;
 }
 function drawLossPanel(u) {
-  const g = pctx, E = 50, e = u * E;
+  const g = pctx, E = 50, e = Math.max(u, 0) * E;
   panelFrame(g, '训练 · Cross-Entropy Loss', 'Adam · η = 0.001 · batch 64 · 60k samples');
   const gx = 110, gy = 170, gw = 1000, gh = 330;
   const X = v => gx + v / E * gw, Y = v => gy + gh - v / 2.4 * gh;
@@ -697,9 +720,45 @@ function drawLossPanel(u) {
   g.restore();
   panelTex.needsUpdate = true;
 }
+function drawTestPanel(u, t) {
+  const g = pctx;
+  panelFrame(g, '测试集 · 未见过的手写数字', 'held-out samples · argmax softmax');
+  const cards = [
+    { d: 3, p: 98.1, shown: 0 },
+    { d: 7, p: 96.4, shown: sm(30.5, 31.1, t) },
+    { d: 0, p: 94.7, shown: sm(36.1, 36.7, t) },
+  ];
+  const cell = 17;
+  cards.forEach(({ d, p, shown }, k) => {
+    const x0 = 80 + k * 360, y0 = 170;
+    const active = k === 0 || shown > 0 || (k === 1 && t > 26.8) || (k === 2 && t > 32.4);
+    g.globalAlpha = active ? 1 : 0.25;
+    g.strokeStyle = 'rgba(140,200,255,.35)'; g.lineWidth = 2;
+    g.strokeRect(x0 - 8, y0 - 8, 12 * cell + 16, 12 * cell + 16);
+    DIGITS[d].forEach((row, r) => [...row].forEach((ch, c) => {
+      g.fillStyle = ch === '#' ? '#dff1ff' : 'rgba(120,170,255,.12)';
+      g.fillRect(x0 + c * cell + 1, y0 + r * cell + 1, cell - 3, cell - 3);
+    }));
+    const ok = k === 0 ? 1 : shown;
+    g.font = `400 26px ${MONO}`; g.fillStyle = '#7fa6d6';
+    g.fillText('PREDICTION', x0, 460);
+    g.globalAlpha = (active ? 1 : 0.25) * (0.25 + 0.75 * ok);
+    g.font = `300 60px ${MONO}`; g.fillStyle = '#ffd27a';
+    g.fillText(ok > 0 ? `${d}` : '?', x0, 530);
+    g.font = `300 40px ${MONO}`; g.fillStyle = '#eef7ff';
+    g.fillText(ok > 0 ? `${(p * ok).toFixed(1)}%` : '—', x0 + 70, 528);
+    if (ok > 0.5) { g.fillStyle = '#7dffb0'; g.font = `400 44px ${FONT}`; g.fillText('✓', x0 + 250, 528); }
+    g.globalAlpha = 1;
+  });
+  g.font = `400 26px ${MONO}`; g.fillStyle = '#7fa6d6';
+  g.fillText(`accuracy on unseen digits: ${t > 36.4 ? '3 / 3' : t > 30.8 ? '2 / 3' : '1 / 3'}`, 80, 630);
+  g.restore();
+  panelTex.needsUpdate = true;
+}
 const PANELS = [
-  { a: 8.2, b: 12.0, draw: drawNeuronPanel },
-  { a: 13.3, b: 17.0, draw: drawLossPanel },
+  { a: 8.2, b: 12.0, x: PANEL_RIGHT, draw: drawNeuronPanel, u: [8.5, 11.4] },
+  { a: 13.3, b: 26.0, x: PANEL_RIGHT, draw: drawLossPanel, u: [13.6, 25.4] },
+  { a: 26.6, b: 37.6, x: PANEL_LEFT, draw: drawTestPanel, u: [26.6, 37.6] },
 ];
 
 // ───────────────────────────── post-processing ─────────────────────────────
@@ -768,7 +827,18 @@ const KEYS = [
   { t: 10.8, p: V(-2, 15, 27),   l: V(4, 0, 0) },
   { t: 12.9, p: V(21, 3, 30),    l: V(22, 0, 0) },      // face-on to the softmax bars
   { t: 16.2, p: V(6, -13, 36),   l: V(2, 0, 0) },
-  { t: 20.0, p: V(0, 3, 68),     l: V(2, 0, 0) },
+  { t: 18.8, p: V(36, 10, -8),   l: V(0, 0, 0) },       // training loop: full orbit
+  { t: 21.4, p: V(4, 18, -40),   l: V(0, 0, 0) },
+  { t: 23.8, p: V(-38, 6, -14),  l: V(0, 0, 0) },
+  { t: 25.8, p: V(-34, 10, 22),  l: V(-10, 0, 0) },
+  { t: 27.6, p: V(-43, 2, 5),    l: V(-18, 0, 0) },     // unseen "7"
+  { t: 29.4, p: V(-2, 15, 27),   l: V(4, 0, 0) },
+  { t: 31.4, p: V(21, 3, 30),    l: V(22, 0, 0) },
+  { t: 33.2, p: V(-43, 2, 5),    l: V(-18, 0, 0) },     // unseen "0"
+  { t: 35.0, p: V(-2, 15, 27),   l: V(4, 0, 0) },
+  { t: 37.0, p: V(21, 3, 30),    l: V(22, 0, 0) },
+  { t: 40.5, p: V(6, -10, 40),   l: V(4, 0, 0) },
+  { t: 45.0, p: V(0, 3, 70),     l: V(2, 0, 0) },
 ];
 function cr(p0, p1, p2, p3, u, out) {
   const u2 = u * u, u3 = u2 * u;
@@ -798,40 +868,73 @@ const lin = (a, b, x) => clamp01((x - a) / (b - a));
 const sm = (a, b, x) => { const t = lin(a, b, x); return t * t * (3 - 2 * t); };
 const GOLD = new THREE.Color(1.0, 0.78, 0.4), WHITE = new THREE.Color(0.85, 0.93, 1.0);
 
+const bump = (a, b, c, d, x) => sm(a, b, x) * (1 - sm(c, d, x));
+const sweep = (t, t0, dur) => -0.6 + (t - t0) / dur * (NL + 0.8);       // forward wave, layer units
+const sweepBack = (t, t0, dur) => (NL - 0.4) - (t - t0) / dur * (NL + 0.4);
+const LOOP_T0 = 16.2, LOOP_N = 6, LOOP_DT = 1.6;                        // training-loop cycles
+const FWD_RUNS = [[8.0, 4.8], [28.0, 3.0], [33.6, 3.0]];                // [start, duration]
+
 function update(t) {
   const U = uniforms;
   U.uTime.value = t;
   U.uAssemble.value = lin(0.2, 4.2, t);
   U.uGrow.value = lin(3.4, 7.4, t) * (NL - 0.4);
   U.uInput.value = sm(6.6, 7.6, t);
-  U.uFwd.value = t < 8.0 ? -9 : -0.6 + (t - 8.0) / 4.8 * (NL + 0.8);
-  U.uBwd.value = t < 13.2 ? 99 : (NL - 0.4) - (t - 13.2) / 3.0 * (NL + 0.4);
-  U.uFinal.value = sm(16.2, 17.2, t);
-  U.uFwd2.value = t < 16.2 ? -9 : ((t - 16.2) * 4.5) % (NL + 1.5) - 1.0;
-  U.uWinner.value = sm(11.8, 12.4, t) * (1 - sm(13.2, 13.8, t)) + U.uFinal.value * 0.4;
+  U.uBoost.value = bump(26.9, 27.6, 28.6, 29.4, t) + bump(32.5, 33.2, 34.2, 35.0, t);
+
+  // forward / backward waves
+  let fwd = -9, bwd = 99;
+  for (const [a, d] of FWD_RUNS) if (t >= a && t < a + d + 0.4) fwd = sweep(t, a, d);
+  if (t >= 13.2 && t < 16.2) bwd = sweepBack(t, 13.2, 3.0);
+  const cyc = (t - LOOP_T0) / LOOP_DT;
+  if (cyc >= 0 && cyc < LOOP_N) {
+    const ct = LOOP_T0 + Math.floor(cyc) * LOOP_DT;
+    if (t < ct + LOOP_DT / 2) fwd = sweep(t, ct, LOOP_DT / 2);
+    else bwd = sweepBack(t, ct + LOOP_DT / 2, LOOP_DT / 2);
+  }
+  U.uFwd.value = fwd;
+  U.uBwd.value = bwd;
+  U.uBwdT.value = t < 13.2 ? 99 : sweepBack(t, 13.2, 3.0);   // first backprop permanently "trains" the weights
+
+  // which digit is on the input, and which softmax row is on the output
+  const k = lin(LOOP_T0, LOOP_T0 + LOOP_N * LOOP_DT, t);    // training progress 41% → 98.1%
+  const m7 = sm(26.8, 27.8, t), m0 = sm(32.4, 33.4, t);
+  U.uSelIn.value.set((1 - k) * (1 - m7), k * (1 - m7), m7 * (1 - m0), m0);
+  const s7 = t >= 27.5 ? 1 : 0, s0 = t >= 33.0 ? 1 : 0;      // switch while the bars are collapsed
+  const sel = [(1 - k) * (1 - s7), k * (1 - s7), s7 * (1 - s0), s0];
+  U.uSelOut.value.set(...sel);
+
+  U.uFinal.value = sm(37.4, 38.4, t);
+  U.uPulse.value = U.uFinal.value;
+  U.uFwd2.value = t < 37.4 ? -9 : ((t - 37.4) * 4.5) % (NL + 1.5) - 1.0;
+  U.uWinner.value = Math.max(bump(11.8, 12.4, 13.2, 13.8, t), 0.4 * bump(16.2, 17.2, 26.4, 27.0, t),
+    bump(30.4, 31.0, 32.2, 32.8, t), bump(36.0, 36.6, 44.5, 45.5, t) * (1 - 0.6 * U.uFinal.value));
   U.uSparks.value = sm(6.5, 8.0, t) * 0.55 + U.uFinal.value * 0.6;
-  U.uBars.value = sm(11.9, 12.9, t);
+  U.uBars.value = sm(11.9, 12.9, t) * (1 - sm(26.6, 27.2, t)) + bump(30.4, 31.2, 32.2, 32.8, t) + sm(36.0, 36.8, t);
 
   bgMat.uniforms.uTime.value = t;
-  bgMat.uniforms.uWarm.value = sm(13.0, 13.8, t) * (1 - sm(16.0, 17.0, t));
+  bgMat.uniforms.uWarm.value = bump(13.0, 13.8, 25.4, 26.6, t);
   bgMat.uniforms.uFinal.value = U.uFinal.value;
 
   // 3D labels
   // hidden while the camera looks down the network's axis (labels would stack up)
   const labelA = Math.max(sm(4.6, 5.6, t) * (1 - sm(6.0, 6.5, t)), sm(8.6, 9.6, t)) * (1 - sm(16.4, 17.4, t)) * 0.9;
   layerLabels.forEach(sp => (sp.material.opacity = labelA));
-  const digitA = sm(10.8, 12.0, t);
+  const digitA = sm(10.8, 12.0, t) * (0.35 + 0.65 * Math.min(1, U.uBars.value * 1.5));
   digitLabels.forEach((sp, i) => {
-    const hot = i === WINNER ? U.uWinner.value : 0;
-    sp.material.opacity = digitA * (0.45 + 0.55 * Math.sqrt(U.uFinal.value > 0.5 ? P2[i] : P1[i]) + hot);
+    const p = PROBS.reduce((s, P, j) => s + P[i] * sel[j], 0);
+    const hot = SLOT_WIN.reduce((s, w, j) => s + (w === i ? sel[j] : 0), 0) * U.uWinner.value;
+    sp.material.opacity = digitA * (0.45 + 0.55 * Math.sqrt(p) + hot);
     sp.material.color.copy(WHITE).lerp(GOLD, Math.min(1, hot * 1.5));
   });
 
-  bloom.strength = 0.75 + 0.2 * U.uFinal.value + 0.25 * Math.exp(-Math.pow((t - 13.3) * 3, 2));
+  const flash = Math.exp(-Math.pow((t - 13.3) * 3, 2));
+  const predict = Math.exp(-Math.pow((t - 12.0) * 4, 2)) + Math.exp(-Math.pow((t - 30.6) * 4, 2)) + Math.exp(-Math.pow((t - 36.2) * 4, 2));
+  bloom.strength = 0.75 + 0.2 * U.uFinal.value + 0.25 * flash + 0.1 * predict;
   const gu = grade.uniforms;
   gu.uTime.value = t;
-  gu.uFade.value = sm(0, 0.9, t) * (1 - sm(19.1, 20, t));
-  gu.uAberr.value = 0.006 + 0.03 * Math.exp(-Math.pow((t - 13.3) * 3, 2)) + 0.012 * Math.exp(-Math.pow((t - 12.0) * 4, 2));
+  gu.uFade.value = sm(0, 0.9, t) * (1 - sm(DURATION - 0.9, DURATION, t));
+  gu.uAberr.value = 0.006 + 0.03 * flash + 0.012 * predict;
 
   // captions
   const ci = CAPTIONS.findIndex(c => t >= c.a && t < c.b);
@@ -842,7 +945,7 @@ function update(t) {
   // info panel
   const p = PANELS.find(p => t >= p.a && t < p.b);
   gu.uPanel.value = p ? sm(p.a, p.a + 0.5, t) * (1 - sm(p.b - 0.4, p.b, t)) : 0;
-  if (p) p.draw(lin(p.a + 0.3, p.b - 0.6, t));
+  if (p) { panelRect.x = p.x; p.draw(lin(p.u[0], p.u[1], t), t); }
 
   placeCamera(t);
 }
